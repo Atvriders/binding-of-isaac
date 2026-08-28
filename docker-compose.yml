@@ -1,12 +1,12 @@
 services:
   isaac:
+    # Pulled from GHCR, not built locally. To build from source instead, see
+    # docker-compose.build.yml.
     image: ghcr.io/atvriders/binding-of-isaac:latest
-    # To build locally instead of pulling:  docker compose build
-    build:
-      context: .
+    pull_policy: always
     container_name: isaac-cabinet
     ports:
-      - "${ISAAC_PORT:-3040}:80"
+      - "${ISAAC_PORT:-3038}:80"
     volumes:
       # Holds the game file. Downloaded once on first start, then reused.
       - isaac-game:/srv/game

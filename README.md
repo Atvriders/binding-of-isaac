@@ -17,7 +17,7 @@ cd binding-of-isaac
 docker compose up -d
 ```
 
-Then open <http://localhost:3040>.
+Then open <http://localhost:3038>.
 
 First start downloads the game file (about 36 MB) into the `isaac-game` volume and
 verifies its checksum before serving it. Later starts reuse it. Watch it happen with
@@ -64,7 +64,7 @@ new browser shows nothing stored until you have actually got somewhere in a run.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ISAAC_PORT` | `3040` | Host port |
+| `ISAAC_PORT` | `3038` | Host port |
 | `GAME_URL` | archive.org copy | Where to fetch the game file on first start |
 | `GAME_SHA256` | pinned checksum | Integrity check; `skip` disables it |
 | `GAME_DIR` | `/srv/game` | Where the game file lives inside the container |

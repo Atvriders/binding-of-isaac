@@ -128,3 +128,31 @@ test('the CSP is identical everywhere it is declared', () => {
   assert.ok(policies.length >= 2, 'expected the policy in more than one block');
   assert.equal(new Set(policies).size, 1, 'the policy must not drift between blocks');
 });
+
+test('compose pulls the published image instead of building it', () => {
+  // With both `image:` and `build:` present, `docker compose up` builds locally and
+  // the published GHCR image is never used.
+  const compose = read('docker-compose.yml');
+  assert.ok(!/^\s*build:/m.test(compose),
+    'docker-compose.yml must not declare build:, or it compiles instead of pulling');
+  assert.match(compose, /image:\s*ghcr\.io\/atvriders\/binding-of-isaac:latest/,
+    'compose must reference the published image');
+});
+
+test('building from source is still possible via the override file', () => {
+  const override = read('docker-compose.build.yml');
+  assert.match(override, /^\s*build:/m, 'the override must supply build:');
+  assert.match(override, /context:\s*\./, 'the override must build from this directory');
+});
+
+test('the documented port matches the one compose actually publishes', () => {
+  const compose = read('docker-compose.yml');
+  const m = compose.match(/\$\{ISAAC_PORT:-(\d+)\}:80/);
+  assert.ok(m, 'compose must publish a default host port');
+  const port = m[1];
+  const readme = read('README.md');
+  assert.ok(readme.includes(`localhost:${port}`),
+    `README should tell the user to open localhost:${port}`);
+  assert.ok(new RegExp(`\\| \`ISAAC_PORT\` \\| \`${port}\``).test(readme),
+    `README config table should document ${port} as the default`);
+});
