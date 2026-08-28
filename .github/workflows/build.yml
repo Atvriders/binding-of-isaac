@@ -78,21 +78,45 @@ jobs:
 
       - name: Smoke-test the built image
         if: github.event_name != 'pull_request'
+        env:
+          RAW_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         run: |
           set -eux
-          docker run -d --name isaac -p 8080:80 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$(git rev-parse --short HEAD)
-          for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8080/healthz; then break; fi
+          # github.repository preserves the owner's capitalisation, but Docker
+          # reference names must be lowercase.
+          IMG=$(echo "$RAW_IMAGE" | tr '[:upper:]' '[:lower:]')
+          docker run -d --name isaac -p 8080:80 "$IMG:latest"
+
+          # First start downloads the game file into the volume, so allow for it.
+          ok=""
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then ok=1; break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' isaac)" != "true" ]; then
+              echo "container exited early:"; docker logs isaac; exit 1
+            fi
             sleep 2
           done
+          if [ -z "$ok" ]; then echo "never became healthy:"; docker logs isaac; exit 1; fi
+
           curl -fsS http://127.0.0.1:8080/healthz
           curl -fsS -o /dev/null http://127.0.0.1:8080/
           curl -fsS -o /dev/null http://127.0.0.1:8080/ruffle/ruffle.js
-          # The entrypoint must have fetched and verified the game file into the volume.
+
+          # The page must be served with the CSP, not just have it in the config.
+          curl -fsSI http://127.0.0.1:8080/ | grep -i "content-security-policy"
+
+          # The entrypoint must have fetched and verified the game into the volume.
           docker exec isaac sh -c 'test -s /srv/game/isaac.swf'
           docker exec isaac sh -c \
             'sha256sum /srv/game/isaac.swf | grep -q 3535d67fa608f28ea13697ba711a22922ab107daf5614978da3a07b623a6a761'
+
+          # And it must refuse to serve a corrupted one.
+          docker exec isaac sh -c 'echo broken > /srv/game/isaac.swf'
+          if docker run --rm --volumes-from isaac \
+               -e GAME_SHA256=3535d67fa608f28ea13697ba711a22922ab107daf5614978da3a07b623a6a761 \
+               "$IMG:latest" true 2>/dev/null; then
+            echo "entrypoint accepted a corrupt game file"; exit 1
+          fi
           echo "image smoke test passed"
           docker logs isaac
           docker rm -f isaac
