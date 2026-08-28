@@ -1,0 +1,12 @@
+{
+  "name": "isaac-cabinet-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-timeout=1800000 integrity.test.mjs bundle.test.mjs e2e.test.mjs",
+    "test:fast": "node --test --test-timeout=120000 integrity.test.mjs bundle.test.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

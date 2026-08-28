@@ -1,0 +1,21 @@
+services:
+  isaac:
+    image: ghcr.io/atvriders/binding-of-isaac:latest
+    # To build locally instead of pulling:  docker compose build
+    build:
+      context: .
+    container_name: isaac-cabinet
+    ports:
+      - "${ISAAC_PORT:-3040}:80"
+    volumes:
+      # Holds the game file. Downloaded once on first start, then reused.
+      - isaac-game:/srv/game
+    environment:
+      # Where the game file comes from on first start.
+      GAME_URL: "https://archive.org/download/binding-of-isaac/Binding%20of%20Isaac.swf"
+      # Integrity check. Set to "skip" if you supply your own copy.
+      GAME_SHA256: "3535d67fa608f28ea13697ba711a22922ab107daf5614978da3a07b623a6a761"
+    restart: unless-stopped
+
+volumes:
+  isaac-game:

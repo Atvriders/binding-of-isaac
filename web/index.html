@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Isaac Cabinet</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+
+<header class="bar">
+  <span class="brand">Isaac&nbsp;Cabinet</span>
+  <span id="meta" class="meta"></span>
+  <span id="pad-indicator" class="pill" hidden></span>
+  <span id="status" class="status" role="status" aria-live="polite"></span>
+  <nav class="actions">
+    <button id="btn-help" type="button">Controls</button>
+    <button id="btn-export" type="button">Export save</button>
+    <button id="btn-import" type="button">Import save</button>
+    <button id="btn-fullscreen" type="button" class="primary">Fullscreen</button>
+  </nav>
+  <input id="file-import" type="file" accept="application/json" hidden>
+</header>
+
+<main class="frame">
+  <div id="stage" class="stage"></div>
+
+  <div id="loading" class="overlay">
+    <div class="spinner" aria-hidden="true"></div>
+    <p>Loading the cartridge…</p>
+    <p class="dim">First start also downloads the game file. It is about 36&nbsp;MB.</p>
+  </div>
+
+  <div id="boot-error" class="overlay error" hidden>
+    <h2 data-msg></h2>
+    <p class="dim" data-detail></p>
+  </div>
+
+  <!-- Touch controls: shown only on coarse-pointer devices. -->
+  <div id="touch-controls" class="touch" hidden>
+    <div class="cluster move" aria-label="Move">
+      <button class="tbtn up"    data-action="up"    aria-label="Move up"></button>
+      <button class="tbtn left"  data-action="left"  aria-label="Move left"></button>
+      <button class="tbtn right" data-action="right" aria-label="Move right"></button>
+      <button class="tbtn down"  data-action="down"  aria-label="Move down"></button>
+    </div>
+    <div class="cluster minor">
+      <button class="tbtn small" data-action="bomb" aria-label="Bomb">E</button>
+      <button class="tbtn small" data-action="item" aria-label="Use item">SP</button>
+      <button class="tbtn small" data-action="pill" aria-label="Use card or pill">Q</button>
+      <button class="tbtn small" data-action="pause" aria-label="Pause">II</button>
+    </div>
+    <div class="cluster shoot" aria-label="Shoot">
+      <button class="tbtn up"    data-action="shootUp"    aria-label="Shoot up"></button>
+      <button class="tbtn left"  data-action="shootLeft"  aria-label="Shoot left"></button>
+      <button class="tbtn right" data-action="shootRight" aria-label="Shoot right"></button>
+      <button class="tbtn down"  data-action="shootDown"  aria-label="Shoot down"></button>
+    </div>
+  </div>
+</main>
+
+<div id="help" class="modal" hidden>
+  <div class="sheet">
+    <h2>Controls</h2>
+    <table>
+      <tr><th>Move</th><td>W A S D</td></tr>
+      <tr><th>Shoot</th><td>Arrow keys</td></tr>
+      <tr><th>Bomb</th><td>E</td></tr>
+      <tr><th>Active item</th><td>Space</td></tr>
+      <tr><th>Card / pill</th><td>Q</td></tr>
+      <tr><th>Pause</th><td>Esc</td></tr>
+    </table>
+    <h3>Controller</h3>
+    <p class="dim">Left stick or d-pad moves. Right stick or the face buttons shoot.
+       Shoulders and triggers are bomb, item and pill. Start pauses.</p>
+    <h3>Saves</h3>
+    <p class="dim">Progress is stored by your browser, not by the server, so restarting
+       the container never loses it — but clearing site data will. Use
+       <strong>Export save</strong> for a real backup.</p>
+    <button type="button" id="btn-help-close">Close</button>
+  </div>
+</div>
+
+<script type="module" src="/js/boot.js"></script>
+<script src="/ruffle/ruffle.js"></script>
+</body>
+</html>

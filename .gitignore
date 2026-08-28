@@ -1,0 +1,12 @@
+node_modules/
+tests/node_modules/
+test-results/
+shots*/
+*.log
+
+# Vendored at build time by the Dockerfile, and locally by scripts/fetch-assets.sh.
+web/ruffle/
+
+# Game data never belongs in this repository or its image.
+game/
+*.swf
