@@ -62,9 +62,11 @@ test('the entrypoint accepts a good file and starts the server', () => {
   assert.match(out, /STARTED/, 'must exec the command it was given');
 });
 
-test('nginx serves wasm correctly and allows the CSP Ruffle needs', () => {
+test('nginx allows the CSP Ruffle needs and serves the game volume', () => {
+  // The wasm MIME type deliberately is NOT declared here: it comes from nginx's
+  // own mime.types (shipped since 1.21.4). Declaring it locally would replace the
+  // entire inherited map. CI asserts the real served Content-Type instead.
   const conf = read('nginx/default.conf');
-  assert.ok(/application\/wasm\s+wasm;/.test(conf), 'wasm MIME type required');
   assert.ok(conf.includes("'wasm-unsafe-eval'"), 'Ruffle compiles WebAssembly');
   assert.ok(conf.includes('/srv/game/'), 'game volume must be served');
   assert.ok(conf.includes('/healthz'), 'health endpoint required');
@@ -155,4 +157,15 @@ test('the documented port matches the one compose actually publishes', () => {
     `README should tell the user to open localhost:${port}`);
   assert.ok(new RegExp(`\\| \`ISAAC_PORT\` \\| \`${port}\``).test(readme),
     `README config table should document ${port} as the default`);
+});
+
+test('nginx declares no types block that would discard mime.types', () => {
+  // The types map, like add_header, is inherited only when the current level
+  // declares none. A single-entry types{} block therefore throws away every other
+  // MIME type and nginx serves index.html as application/octet-stream, which the
+  // browser downloads instead of rendering.
+  const conf = read('nginx/default.conf');
+  const blocks = [...conf.matchAll(/^\s*types\s*\{/gm)];
+  assert.equal(blocks.length, 0,
+    'a types{} block here replaces the inherited MIME map rather than extending it');
 });

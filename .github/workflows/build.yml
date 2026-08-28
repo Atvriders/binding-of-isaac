@@ -105,6 +105,20 @@ jobs:
           # The page must be served with the CSP, not just have it in the config.
           curl -fsSI http://127.0.0.1:8080/ | grep -i "content-security-policy"
 
+          # Content types must be right, or the browser downloads the page instead
+          # of rendering it. Only a real nginx can prove this.
+          ct() { curl -fsSI "http://127.0.0.1:8080$1" \
+                   | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}'; }
+          echo "html: $(ct /)"; echo "js:   $(ct /js/boot.js)"; echo "css:  $(ct /css/app.css)"
+          case "$(ct /)" in text/html*) ;; *) echo "index.html is not text/html"; exit 1;; esac
+          case "$(ct /js/boot.js)" in *javascript*) ;; *) echo "js has wrong type"; exit 1;; esac
+          case "$(ct /css/app.css)" in text/css*) ;; *) echo "css has wrong type"; exit 1;; esac
+
+          WASM=$(docker exec isaac sh -c 'cd /usr/share/nginx/html/ruffle && ls *.wasm | head -1')
+          echo "wasm: $(ct /ruffle/$WASM)"
+          case "$(ct /ruffle/$WASM)" in application/wasm*) ;;
+            *) echo "wasm has wrong type; Ruffle cannot stream-compile it"; exit 1;; esac
+
           # The entrypoint must have fetched and verified the game into the volume.
           docker exec isaac sh -c 'test -s /srv/game/isaac.swf'
           docker exec isaac sh -c \
