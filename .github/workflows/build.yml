@@ -110,13 +110,21 @@ jobs:
           docker exec isaac sh -c \
             'sha256sum /srv/game/isaac.swf | grep -q 3535d67fa608f28ea13697ba711a22922ab107daf5614978da3a07b623a6a761'
 
-          # And it must refuse to serve a corrupted one.
-          docker exec isaac sh -c 'echo broken > /srv/game/isaac.swf'
-          if docker run --rm --volumes-from isaac \
+          # And it must refuse to serve a corrupted one. This needs a real bind
+          # mount: the running container has no declared volume, so --volumes-from
+          # would share nothing and the check would silently pass against a fresh
+          # download instead of the corrupt file.
+          mkdir -p /tmp/badgame
+          echo broken > /tmp/badgame/isaac.swf
+          if docker run --rm -v /tmp/badgame:/srv/game \
                -e GAME_SHA256=3535d67fa608f28ea13697ba711a22922ab107daf5614978da3a07b623a6a761 \
-               "$IMG:latest" true 2>/dev/null; then
+               "$IMG:latest" true; then
             echo "entrypoint accepted a corrupt game file"; exit 1
           fi
+          echo "entrypoint correctly refused a corrupt game file"
+
+          # A user-supplied file with checking disabled must still be accepted.
+          docker run --rm -v /tmp/badgame:/srv/game -e GAME_SHA256=skip "$IMG:latest" true
           echo "image smoke test passed"
           docker logs isaac
           docker rm -f isaac
