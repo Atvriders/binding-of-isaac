@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import { chromium } from 'playwright-core';
 import { chromePath, LAUNCH_ARGS } from './helpers/chrome.mjs';
 import { startServer, REPO, nginxCsp } from './helpers/serve.mjs';
-import { sig, isBlank, saturate, collectNew, waitForPaint, changedDuring } from './helpers/game.mjs';
-import { reachMenu, enterRun, clickStage } from './helpers/flow.mjs';
+import { sig, isBlank, saturate, collectNew, waitForPaint, changedDuring, sampleRegion } from './helpers/game.mjs';
+import { reachMenu, enterRun, clickStage, reachMenuByLogo } from './helpers/flow.mjs';
 
 const WEB = path.join(REPO, 'web');
 const RUFFLE = path.join(WEB, 'ruffle');
@@ -492,4 +492,43 @@ test('clicking a toolbar control hands focus back to the game', { skip }, async 
     assert.equal(focused, true, `focus was left on #${id} instead of the game`);
   }
   await page.evaluate(() => document.getElementById('help').setAttribute('hidden', ''));
+});
+
+test('the default renderer can actually draw room graphics', { skip }, async () => {
+  // The regression this exists for: pinning preferredRenderer to 'webgl' selected a
+  // backend with no offscreen rendering, so BitmapData.draw failed and every floor,
+  // wall and rock went undrawn -- while still colliding. The game looked like flat
+  // brown boxes with invisible walls, and no test noticed because the rest of the
+  // suite runs on ?renderer=canvas so that pixels can be read back.
+  const p2 = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+  const backendErrors = [];
+  p2.on('console', m => {
+    const t = m.text();
+    if (/BitmapData|Render backend/i.test(t)) backendErrors.push(t.replace(/%c/g, '').slice(0, 120));
+  });
+  try {
+    await p2.goto(srv.url, { waitUntil: 'load' });        // no renderer override
+    await p2.waitForFunction(() => window.__player?.metadata != null, { timeout: 120000 });
+    await p2.waitForFunction(() => document.getElementById('loading')?.hidden === true,
+                             { timeout: 120000 });
+
+    const menu = await reachMenuByLogo(p2, sampleRegion);
+    assert.ok(menu.reached, 'never reached the title screen');
+
+    await clickStage(p2, 400, 470);          // Start
+    await p2.waitForTimeout(6000);
+    await clickStage(p2, 624, 478);          // SELECT
+    await p2.waitForTimeout(11000);
+
+    // Binary and reliable: a backend that cannot composite says so, every time.
+    assert.deepEqual(backendErrors, [],
+      'the renderer cannot composite the game\'s graphics; rooms will be untextured ' +
+      'and objects invisible but solid');
+
+    // And the room must not be a flat wash of one colour.
+    const room = await sampleRegion(p2, '#stage', [0.1, 0.25, 0.9, 0.9]);
+    console.log(`      room: ${room.distinct} colours, ${room.dominantPct}% dominant`);
+    assert.ok(room.dominantPct < 90,
+      `the room is ${room.dominantPct}% a single colour, so it is not drawing textures`);
+  } finally { await p2.close(); }
 });

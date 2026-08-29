@@ -17,11 +17,22 @@ window.RufflePlayer.config = {
   logLevel: 'error',
   warnOnUnsupportedContent: false,
   splashScreen: false,
-  // ?renderer=canvas forces the software path: useful on machines with broken
-  // WebGL drivers, and required for pixel readback in the test suite.
-  preferredRenderer: new URLSearchParams(location.search).get('renderer') || 'webgl',
+  // preferredRenderer is deliberately NOT set by default.
+  //
+  // Pinning 'webgl' selects Ruffle's legacy backend, which has no offscreen
+  // rendering and therefore cannot perform BitmapData.draw -- the call this game
+  // uses to composite its floors, walls and rocks. The result is flat untextured
+  // rooms and solid objects that never draw but still collide. Left unset, Ruffle
+  // picks the best available (webgpu, then wgpu-webgl), both of which support it.
+  //
+  // ?renderer=<webgpu|wgpu-webgl|webgl|canvas> overrides it for diagnostics.
   allowScriptAccess: false,
 };
+
+const rendererOverride = new URLSearchParams(location.search).get('renderer');
+if (rendererOverride) {
+  window.RufflePlayer.config.preferredRenderer = rendererOverride;
+}
 
 /** Ruffle silently falls back to its canvas backend when WebGL is unavailable, and
  *  that backend does not implement BitmapData.draw -- which is how this game composites

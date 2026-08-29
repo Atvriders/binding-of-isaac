@@ -87,20 +87,21 @@ environment:
 or it failed. Check `docker compose logs isaac`. The container refuses to serve a file
 that fails its checksum rather than handing you a broken game.
 
-**Flat untextured floors and walls, or an "invisible wall" you collide with.** Your
-browser is not giving Ruffle a WebGL context, so it has fallen back to software
-rendering. That backend does not implement `BitmapData.draw`, which is how this game
-composites its floor, wall and rock textures: you get flat colours and solid objects
-you cannot see. The game logic is unaffected, which is why collision still works.
+**Flat untextured floors and walls, or an "invisible wall" you collide with.** The
+renderer cannot perform `BitmapData.draw`, which is how this game composites its
+floor, wall and rock graphics. Those objects are never drawn but still collide, so
+you walk into things that are not there.
 
-Turn on hardware acceleration and restart the browser. In Edge that is
-Settings -> System -> "Use graphics acceleration when available"; check `edge://gpu`
-and confirm WebGL reads *Hardware accelerated*. Chrome is the same under
-`chrome://settings/system`. The page shows a banner when it detects this.
+Only Ruffle's wgpu backends (`webgpu` and `wgpu-webgl`) support that call. The legacy
+`webgl` backend and the software `canvas` backend do not. This page leaves the choice
+to Ruffle, which picks the best available, so you should never hit this -- but if you
+have pinned `?renderer=webgl` or `?renderer=canvas`, that is the cause. Drop the
+parameter.
 
-**Do not use `?renderer=canvas` to work around missing graphics** -- that forces the
-very backend that cannot draw them. It exists only for machines whose WebGL drivers
-crash, where a flat-looking game beats no game at all.
+If it happens without an override, your browser is giving Ruffle nothing better than
+the software backend. Turn on hardware acceleration and restart it: in Edge that is
+Settings -> System -> "Use graphics acceleration when available", and `edge://gpu`
+should report WebGL as *Hardware accelerated*.
 
 **Black screen.** If WebGL is working and the page is still black, try
 `?renderer=canvas` to rule out a driver problem.

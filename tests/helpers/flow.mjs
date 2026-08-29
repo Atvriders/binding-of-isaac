@@ -34,3 +34,16 @@ export async function enterRun(page) {
   await page.waitForTimeout(9000);
   return saturate(page, { stableMs: 8000, maxMs: 90000 });
 }
+
+/** Click through the intro until the title logo appears. Detects the menu by its
+ *  large dark-red logo rather than by a fixed wait, which does not survive a slower
+ *  machine or a network round trip. */
+export async function reachMenuByLogo(page, sampleRegion, { maxTicks = 80, gap = 2500 } = {}) {
+  for (let t = 0; t < maxTicks; t++) {
+    await clickStage(page, 400, 300);
+    await page.waitForTimeout(gap);
+    const top = await sampleRegion(page, '#stage', [0, 0, 1, 0.35]);
+    if (top.redPct > 1.5) return { reached: true, ticks: t };
+  }
+  return { reached: false, ticks: maxTicks };
+}

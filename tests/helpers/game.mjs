@@ -83,3 +83,33 @@ export async function changedDuring(page, act, { samples = 14, every = 150 } = {
   seen.add(await sig(page));
   return { changed: [...seen].some(s => s !== before), before, seen: seen.size };
 }
+
+/** Sample pixels from a composited screenshot, decoded back inside the page.
+ *  drawImage() on a live WebGL canvas returns blank (no preserveDrawingBuffer), so
+ *  reading the canvas directly only works under the canvas backend. This works
+ *  under every renderer, which is the whole point. */
+export async function sampleRegion(page, selector, [x0, y0, x1, y1]) {
+  const buf = await page.locator(selector).screenshot();
+  return page.evaluate(async ({ b64, r }) => {
+    const img = new Image();
+    await new Promise(res => { img.onload = res; img.src = 'data:image/png;base64,' + b64; });
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(Math.floor(c.width * r[0]), Math.floor(c.height * r[1]),
+                               Math.floor(c.width * (r[2] - r[0])),
+                               Math.floor(c.height * (r[3] - r[1]))).data;
+    const counts = new Map();
+    let red = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const k = `${d[i]},${d[i + 1]},${d[i + 2]}`;
+      counts.set(k, (counts.get(k) || 0) + 1);
+      if (d[i] > 110 && d[i + 1] < 70 && d[i + 2] < 70) red++;
+    }
+    const n = d.length / 4;
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    return { distinct: counts.size, dominantPct: +(top[1] / n * 100).toFixed(1),
+             redPct: +(red / n * 100).toFixed(2) };
+  }, { b64: buf.toString('base64'), r: [x0, y0, x1, y1] });
+}
