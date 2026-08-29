@@ -23,6 +23,17 @@ window.RufflePlayer.config = {
   allowScriptAccess: false,
 };
 
+/** Ruffle silently falls back to its canvas backend when WebGL is unavailable, and
+ *  that backend does not implement BitmapData.draw -- which is how this game composites
+ *  its floor, wall and rock textures. The result is flat colours and solid objects you
+ *  cannot see, with no error shown. Detect it and say so. */
+function webglAvailable() {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch { return false; }
+}
+
 function fail(msg, detail) {
   const el = document.getElementById('boot-error');
   el.hidden = false;
@@ -54,6 +65,13 @@ async function main() {
     document.getElementById('meta').textContent =
       `${m.width}x${m.height} · ${m.frameRate}fps · SWF v${m.swfVersion}`;
   });
+
+  if (!webglAvailable() && new URLSearchParams(location.search).get('renderer') !== 'canvas') {
+    const warn = document.getElementById('renderer-warning');
+    warn.hidden = false;
+    document.getElementById('btn-warn-dismiss')
+      .addEventListener('click', () => { warn.hidden = true; });
+  }
 
   bindTo(player);
   startGamepad();

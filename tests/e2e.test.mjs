@@ -363,14 +363,27 @@ test('the default WebGL renderer paints and animates', { skip }, async () => {
     await p2.waitForFunction(() => window.__player?.metadata != null, { timeout: 120000 });
     await p2.waitForFunction(() => document.getElementById('loading')?.hidden === true,
                              { timeout: 60000 });
-    await p2.waitForTimeout(6000);
-    const stage = p2.locator('#stage');
-    const a = await stage.screenshot();
-    await p2.waitForTimeout(5000);
-    const b = await stage.screenshot();
+    // Poll for the first painted frame instead of sleeping: this page is a third
+    // browser context competing for a GPU-less sandbox, and a fixed wait is a flake.
     // A blank or solid frame compresses to a few KB; real artwork is far larger.
-    assert.ok(a.length > 10000, `WebGL frame looks blank (${a.length} bytes)`);
-    assert.ok(!a.equals(b), 'WebGL output must change over time');
+    const stage = p2.locator('#stage');
+    let a = null;
+    const deadline = Date.now() + 45000;
+    while (Date.now() < deadline) {
+      a = await stage.screenshot();
+      if (a.length > 10000) break;
+      await p2.waitForTimeout(1000);
+    }
+    assert.ok(a && a.length > 10000, `never painted a frame (${a?.length} bytes)`);
+
+    // And it must keep animating, not freeze on one frame.
+    let changed = false;
+    const moveDeadline = Date.now() + 20000;
+    while (Date.now() < moveDeadline && !changed) {
+      await p2.waitForTimeout(1500);
+      changed = !a.equals(await stage.screenshot());
+    }
+    assert.ok(changed, 'rendered output must change over time');
   } finally { await p2.close(); }
 });
 
@@ -403,4 +416,37 @@ test('touch controls stay off on a hover-capable device', { skip }, async () => 
       document.getElementById('touch-controls').hidden);
     assert.equal(forced, false, '?touch=1 must force the controls on');
   } finally { await p2.close(); }
+});
+
+test('a missing WebGL context is surfaced, not silently degraded', { skip }, async () => {
+  // Ruffle falls back to a canvas backend that cannot do BitmapData.draw, so the
+  // game loses its floor, wall and rock textures and gains invisible solid objects.
+  // Failing silently there is worse than the bug itself.
+  const p2 = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+  try {
+    // Deny WebGL before any page script runs.
+    await p2.addInitScript(() => {
+      const real = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+        if (typeof type === 'string' && type.startsWith('webgl')) return null;
+        return real.call(this, type, ...rest);
+      };
+    });
+    await p2.goto(srv.url, { waitUntil: 'load' });
+    await p2.waitForFunction(() => window.__player != null, { timeout: 60000 });
+    const shown = await p2.evaluate(() => {
+      const el = document.getElementById('renderer-warning');
+      return { hidden: el.hidden, display: getComputedStyle(el).display,
+               mentionsFix: /graphics acceleration/i.test(el.textContent) };
+    });
+    assert.equal(shown.hidden, false, 'the warning must appear when WebGL is missing');
+    assert.notEqual(shown.display, 'none', 'and must actually be visible');
+    assert.equal(shown.mentionsFix, true, 'it must say how to fix it');
+  } finally { await p2.close(); }
+});
+
+test('the warning stays hidden when WebGL works', { skip }, async () => {
+  const shown = await page.evaluate(() =>
+    document.getElementById('renderer-warning').hidden);
+  assert.equal(shown, true, 'no warning when the renderer is fine');
 });

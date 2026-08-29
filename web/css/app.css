@@ -53,6 +53,14 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sheet td{color:var(--dim);padding:3px 0}
 .sheet button{margin-top:18px}
 
+.warnbar{position:absolute;top:0;left:0;right:0;z-index:15;display:flex;gap:10px;
+  align-items:flex-start;padding:10px 14px;background:#3a2410;color:#f4d9a8;
+  border-bottom:1px solid var(--warn);font-size:12px;line-height:1.5}
+.warnbar strong{display:block;color:var(--warn)}
+.warnbar span{display:block;max-width:70ch}
+.warnbar button{margin-left:auto;background:none;border:0;color:var(--warn);
+  font-size:18px;line-height:1;padding:0 4px;cursor:pointer}
+
 /* ---- touch controls ---- */
 .touch{position:absolute;inset:0;pointer-events:none;z-index:10}
 .touch .cluster{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));

@@ -31,6 +31,16 @@
     <p class="dim">First start also downloads the game file. It is about 36&nbsp;MB.</p>
   </div>
 
+  <div id="renderer-warning" class="warnbar" hidden>
+    <strong>Graphics acceleration is off, so the game will look wrong.</strong>
+    <span>Ruffle has fallen back to software rendering, which cannot draw this game's
+    floor, wall and rock textures &mdash; you will see flat colours and invisible
+    objects you still collide with. Turn on hardware acceleration in your browser
+    (Edge: Settings &rarr; System &rarr; "Use graphics acceleration when available"),
+    then restart it.</span>
+    <button type="button" id="btn-warn-dismiss" aria-label="Dismiss">&times;</button>
+  </div>
+
   <div id="boot-error" class="overlay error" hidden>
     <h2 data-msg></h2>
     <p class="dim" data-detail></p>

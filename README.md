@@ -87,9 +87,23 @@ environment:
 or it failed. Check `docker compose logs isaac`. The container refuses to serve a file
 that fails its checksum rather than handing you a broken game.
 
-**Black screen, missing objects, or an "invisible wall" you collide with.** Force the
-software renderer with `?renderer=canvas`. Ruffle's WebGL path can fail to draw some
-objects while the game still collides with them, which reads as an invisible wall.
+**Flat untextured floors and walls, or an "invisible wall" you collide with.** Your
+browser is not giving Ruffle a WebGL context, so it has fallen back to software
+rendering. That backend does not implement `BitmapData.draw`, which is how this game
+composites its floor, wall and rock textures: you get flat colours and solid objects
+you cannot see. The game logic is unaffected, which is why collision still works.
+
+Turn on hardware acceleration and restart the browser. In Edge that is
+Settings -> System -> "Use graphics acceleration when available"; check `edge://gpu`
+and confirm WebGL reads *Hardware accelerated*. Chrome is the same under
+`chrome://settings/system`. The page shows a banner when it detects this.
+
+**Do not use `?renderer=canvas` to work around missing graphics** -- that forces the
+very backend that cannot draw them. It exists only for machines whose WebGL drivers
+crash, where a flat-looking game beats no game at all.
+
+**Black screen.** If WebGL is working and the page is still black, try
+`?renderer=canvas` to rule out a driver problem.
 
 **No sound until you click.** Browsers block audio until you interact with the page.
 Click once in the window.
