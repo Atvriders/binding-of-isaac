@@ -434,6 +434,10 @@ test('a missing WebGL context is surfaced, not silently degraded', { skip }, asy
     });
     await p2.goto(srv.url, { waitUntil: 'load' });
     await p2.waitForFunction(() => window.__player != null, { timeout: 60000 });
+    // Wait for the loading panel to clear, or the hit-test below finds the spinner
+    // rather than whatever it is actually meant to be checking for.
+    await p2.waitForFunction(() => document.getElementById('loading')?.hidden === true,
+                             { timeout: 90000 });
     const shown = await p2.evaluate(() => {
       const el = document.getElementById('renderer-warning');
       return { hidden: el.hidden, display: getComputedStyle(el).display,
@@ -442,6 +446,33 @@ test('a missing WebGL context is surfaced, not silently degraded', { skip }, asy
     assert.equal(shown.hidden, false, 'the warning must appear when WebGL is missing');
     assert.notEqual(shown.display, 'none', 'and must actually be visible');
     assert.equal(shown.mentionsFix, true, 'it must say how to fix it');
+
+    // A banner over the game swallows the clicks Ruffle needs before it will accept
+    // the keyboard. It must sit above the stage, never on top of it.
+    const covered = await p2.evaluate(() => {
+      const r = document.getElementById('stage').getBoundingClientRect();
+      const pts = [[0.5, 0.5], [0.5, 0.05], [0.1, 0.1], [0.9, 0.05]];
+      return pts.map(([fx, fy]) => {
+        const el = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+        return { tag: el?.tagName?.toLowerCase() ?? null,
+                 id: el?.closest('[id]')?.id ?? null, at: `${fx},${fy}` };
+      });
+    });
+    for (const hit of covered) {
+      assert.equal(hit.tag, 'ruffle-player',
+        `something covers the game at (${hit.at}): <${hit.tag}> inside #${hit.id}`);
+    }
+
+    // Dismissing it must not strand focus on the dismiss button.
+    await p2.click('#btn-warn-dismiss');
+    await p2.waitForTimeout(300);
+    const after = await p2.evaluate(() => ({
+      hidden: document.getElementById('renderer-warning').hidden,
+      focused: document.activeElement === window.__player,
+    }));
+    assert.equal(after.hidden, true, 'dismiss must hide the warning');
+    assert.equal(after.focused, true,
+      'focus must return to the game, or the keyboard silently stops working');
   } finally { await p2.close(); }
 });
 
@@ -449,4 +480,16 @@ test('the warning stays hidden when WebGL works', { skip }, async () => {
   const shown = await page.evaluate(() =>
     document.getElementById('renderer-warning').hidden);
   assert.equal(shown, true, 'no warning when the renderer is fine');
+});
+
+test('clicking a toolbar control hands focus back to the game', { skip }, async () => {
+  // Ruffle ignores the keyboard while the player is unfocused, so any control that
+  // takes focus must give it straight back.
+  for (const id of ['btn-help', 'btn-help-close', 'btn-fullscreen']) {
+    await page.evaluate(i => document.getElementById(i)?.click(), id);
+    await page.waitForTimeout(250);
+    const focused = await page.evaluate(() => document.activeElement === window.__player);
+    assert.equal(focused, true, `focus was left on #${id} instead of the game`);
+  }
+  await page.evaluate(() => document.getElementById('help').setAttribute('hidden', ''));
 });

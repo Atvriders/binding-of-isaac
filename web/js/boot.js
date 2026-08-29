@@ -100,10 +100,11 @@ async function main() {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) ensureFocus();
   });
-  // Clicking a toolbar button moves focus off the game; hand it straight back.
-  for (const b of document.querySelectorAll('.bar button')) {
-    b.addEventListener('click', () => setTimeout(ensureFocus, 0));
-  }
+  // Clicking ANY control moves focus off the game, and Ruffle then ignores the
+  // keyboard. Hand focus back after every one of them, not just the toolbar.
+  document.addEventListener('click', e => {
+    if (e.target.closest('button, input, a')) setTimeout(ensureFocus, 0);
+  });
 
   try {
     await player.load({ url: GAME_URL, allowScriptAccess: false });
