@@ -59,12 +59,15 @@ async function main() {
   startGamepad();
   initUi({ player, stage });
 
-  // Bind unconditionally: a touchscreen laptop reports both pointer types, and
-  // ?touch=1 lets anyone force the controls on. Only visibility is conditional.
+  // Bind unconditionally so the controls work the instant they are shown; only
+  // visibility is conditional. ?touch=1 forces them on, ?touch=0 forces them off.
   const touchLayer = document.getElementById('touch-controls');
-  const forceTouch = new URLSearchParams(location.search).get('touch') === '1';
+  const touchParam = new URLSearchParams(location.search).get('touch');
+  const wantTouch = touchParam === '1' ? true
+                  : touchParam === '0' ? false
+                  : isTouchDevice();
   initTouch(touchLayer);
-  if (isTouchDevice() || forceTouch) {
+  if (wantTouch) {
     touchLayer.hidden = false;
     document.body.classList.add('has-touch');
   }

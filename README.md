@@ -41,7 +41,8 @@ ISAAC_PORT=8080 docker compose up -d
 | Pause | `Esc` | Start |
 
 On phones and tablets the on-screen controls appear automatically. Force them on
-anywhere with `?touch=1`.
+anywhere with `?touch=1`, or off with `?touch=0`. They deliberately do not appear on
+a touchscreen laptop, where you almost certainly want the keyboard.
 
 Controllers need no setup — plug one in and press a button. The browser only reveals
 a gamepad after its first input, so the indicator in the top bar appears then.
@@ -86,8 +87,9 @@ environment:
 or it failed. Check `docker compose logs isaac`. The container refuses to serve a file
 that fails its checksum rather than handing you a broken game.
 
-**Black screen, or the browser reports a WebGL problem.** Force the software renderer
-with `?renderer=canvas`. It is slower but works on machines with broken drivers.
+**Black screen, missing objects, or an "invisible wall" you collide with.** Force the
+software renderer with `?renderer=canvas`. Ruffle's WebGL path can fail to draw some
+objects while the game still collides with them, which reads as an invisible wall.
 
 **No sound until you click.** Browsers block audio until you interact with the page.
 Click once in the window.

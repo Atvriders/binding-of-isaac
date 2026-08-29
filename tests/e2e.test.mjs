@@ -379,3 +379,28 @@ test('the container\'s CSP does not break the emulator', { skip }, async () => {
   assert.deepEqual([...new Set(v)], [],
     'nginx would send this policy in production, and these were blocked under it');
 });
+
+test('touch controls stay off on a hover-capable device', { skip }, async () => {
+  // navigator.maxTouchPoints > 0 is true on Windows touchscreen laptops, which put
+  // phone controls on top of the game for keyboard-and-mouse users.
+  const p2 = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+  try {
+    await p2.goto(srv.url, { waitUntil: 'load' });      // no ?touch override
+    await p2.waitForFunction(() => window.__player != null, { timeout: 60000 });
+    const state = await p2.evaluate(() => {
+      const el = document.getElementById('touch-controls');
+      return { hidden: el.hidden, display: getComputedStyle(el).display,
+               coarse: matchMedia('(hover: none) and (pointer: coarse)').matches };
+    });
+    assert.equal(state.coarse, false, 'this test only means anything on a hover device');
+    assert.equal(state.hidden, true, 'touch controls must be hidden on a hover device');
+    assert.equal(state.display, 'none', 'and must not paint over the game');
+
+    // ...but must still be available when explicitly asked for.
+    await p2.goto(`${srv.url}/?touch=1`, { waitUntil: 'load' });
+    await p2.waitForFunction(() => window.__player != null, { timeout: 60000 });
+    const forced = await p2.evaluate(() =>
+      document.getElementById('touch-controls').hidden);
+    assert.equal(forced, false, '?touch=1 must force the controls on');
+  } finally { await p2.close(); }
+});

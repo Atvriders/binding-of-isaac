@@ -42,6 +42,8 @@ export function initTouch(root) {
 }
 
 export function isTouchDevice() {
-  return window.matchMedia('(hover: none) and (pointer: coarse)').matches
-      || navigator.maxTouchPoints > 0;
+  // navigator.maxTouchPoints > 0 is true on every Windows touchscreen laptop, which
+  // put phone controls on top of the game for mouse-and-keyboard users. Require a
+  // device with no hover-capable pointer instead, and let ?touch=1 force them on.
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 }
