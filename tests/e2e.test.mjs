@@ -551,46 +551,71 @@ test('the default renderer can actually draw room graphics', { skip }, async () 
   } finally { await p2.close(); }
 });
 
-test('the item browser opens, filters and closes', { skip }, async () => {
-  await page.evaluate(() => document.getElementById('btn-items').click());
-  await page.waitForTimeout(400);
-  const opened = await page.evaluate(() => ({
-    visible: !document.getElementById('items-panel').hidden,
-    count: document.getElementById('items-count').textContent,
-    rows: document.querySelectorAll('#items-results .item-row').length,
-  }));
-  assert.equal(opened.visible, true, 'the panel should open');
-  assert.ok(opened.rows > 0, `expected item rows, got ${opened.rows} (${opened.count})`);
+test('the sidebar lists every item as a grid tile', { skip }, async () => {
+  const g = await page.evaluate(() => {
+    const tiles = document.querySelectorAll('#items-results .tile');
+    return {
+      tiles: tiles.length,
+      withIcon: [...tiles].filter(t => !t.querySelector('.tile-icon.is-text')).length,
+      count: document.getElementById('items-count').textContent,
+      visible: !document.getElementById('items-panel').hidden,
+    };
+  });
+  assert.equal(g.visible, true, 'the sidebar should be visible by default');
+  assert.ok(g.tiles > 200, `expected the whole list, got ${g.tiles} tiles (${g.count})`);
+  assert.ok(g.withIcon > 150, `expected most tiles to carry an icon, got ${g.withIcon}`);
+});
 
-  const filtered = await page.evaluate(async () => {
+test('searching filters the grid and a tile opens its detail', { skip }, async () => {
+  const r = await page.evaluate(async () => {
     const box = document.getElementById('items-search');
     box.value = 'onion';
     box.dispatchEvent(new Event('input', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 200));
-    return [...document.querySelectorAll('#items-results .item-name')].map(e => e.textContent);
+    await new Promise(res => setTimeout(res, 200));
+    const names = [...document.querySelectorAll('#items-results .tile')]
+      .map(t => t.dataset.name);
+    document.querySelector('#items-results .tile')?.click();
+    await new Promise(res => setTimeout(res, 150));
+    const detail = document.getElementById('item-detail');
+    box.value = '';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    return { names, detailShown: !detail.hidden, detailText: detail.textContent.slice(0, 80) };
   });
-  assert.ok(filtered.length > 0, 'searching should return something');
-  assert.ok(filtered.every(n => /onion/i.test(n)), `unrelated results: ${filtered}`);
-
-  await page.evaluate(() => document.getElementById('btn-items-close').click());
-  await page.waitForTimeout(300);
-  const after = await page.evaluate(() => ({
-    hidden: document.getElementById('items-panel').hidden,
-    focused: document.activeElement === window.__player,
-  }));
-  assert.equal(after.hidden, true, 'the panel should close');
-  assert.equal(after.focused, true, 'focus must return to the game');
+  assert.ok(r.names.length > 0, 'search should match something');
+  assert.ok(r.names.every(n => /onion/i.test(n)), `unrelated results: ${r.names}`);
+  assert.equal(r.detailShown, true, 'clicking a tile should show its detail');
+  assert.ok(r.detailText.length > 0, 'the detail panel should have content');
 });
 
-test('typing in the item search never reaches the game', { skip }, async () => {
-  // Ruffle listens for keys on window, so without isolation every letter typed here
-  // would also drive the character.
-  const r = await page.evaluate(async () => {
-    document.getElementById('btn-items').click();
-    await new Promise(res => setTimeout(res, 300));
+test('the sidebar never overlaps the game, at any width', { skip }, async () => {
+  for (const w of [180, 320, 560, 820]) {
+    const r = await page.evaluate(width => {
+      document.documentElement.style.setProperty('--side-w', `${width}px`);
+      const side = document.getElementById('items-panel').getBoundingClientRect();
+      const stage = document.getElementById('stage').getBoundingClientRect();
+      return { sideRight: side.right, stageLeft: stage.left, stageRight: stage.right,
+               ratio: +(stage.width / stage.height).toFixed(2),
+               viewport: document.documentElement.clientWidth };
+    }, w);
+    assert.ok(r.sideRight <= r.stageLeft + 1,
+      `at ${w}px the sidebar (right ${r.sideRight}) overlaps the stage (left ${r.stageLeft})`);
+    assert.ok(r.stageRight <= r.viewport + 1,
+      `at ${w}px the stage overflows the viewport (${r.stageRight} > ${r.viewport})`);
+    assert.ok(Math.abs(r.ratio - 1.33) < 0.05,
+      `at ${w}px the stage lost its 4:3 ratio (${r.ratio})`);
+  }
+  await page.evaluate(() => document.documentElement.style.setProperty('--side-w', '320px'));
+});
 
-    // A bubble-phase listener on window stands in for Ruffle's own: if the capture
-    // phase stopped propagation, this never fires.
+test('typing in the sidebar never reaches the game', { skip }, async () => {
+  // Isolation is scoped to "the sidebar has focus", not "the sidebar is visible":
+  // the sidebar is always on screen, so keying off visibility would mean the game
+  // never received another keystroke.
+  const r = await page.evaluate(async () => {
+    const box = document.getElementById('items-search');
+    box.focus();
+    await new Promise(res => setTimeout(res, 150));
+
     let leaked = 0;
     const spy = () => { leaked++; };
     window.addEventListener('keydown', spy);
@@ -598,60 +623,56 @@ test('typing in the item search never reaches the game', { skip }, async () => {
       window.dispatchEvent(new KeyboardEvent('keydown',
         { key, code: `Key${key.toUpperCase()}`, bubbles: true, composed: true }));
     }
-    const heldWhileOpen = window.__isaacInput.heldActions().length;
-    // Ruffle only acts on keys while its player holds focus, so the panel taking
-    // focus is the second line of defence behind stopImmediatePropagation.
-    const a = document.activeElement;
-    const focusHolder = a === window.__player ? 'ruffle-player'
-      : a ? `${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''}` : 'null';
-    const focusMovedOffGame = a !== window.__player;
-    const panelOpen = !document.getElementById('items-panel').hidden;
-    const fs = document.fullscreenElement
-      ? (document.fullscreenElement.id || document.fullscreenElement.tagName.toLowerCase())
-      : 'none';
+    const heldWhileTyping = window.__isaacInput.heldActions().length;
     window.removeEventListener('keydown', spy);
 
-    document.getElementById('btn-items-close').click();
-    await new Promise(res => setTimeout(res, 200));
-
-    // ...and once closed, keys must reach the game again.
+    // Focus back on the game: keys must flow again.
+    window.__isaacInput.ensureFocus();
+    await new Promise(res => setTimeout(res, 150));
     let reaches = 0;
     const spy2 = () => { reaches++; };
     window.addEventListener('keydown', spy2);
     window.dispatchEvent(new KeyboardEvent('keydown',
       { key: 'w', code: 'KeyW', bubbles: true, composed: true }));
     window.removeEventListener('keydown', spy2);
-    return { leaked, heldWhileOpen, reaches, focusMovedOffGame, focusHolder, panelOpen, fs };
+    return { leaked, heldWhileTyping, reaches };
   });
-  assert.equal(r.leaked, 0,
-    'keystrokes leaked to the game while the panel was open; stopPropagation does ' +
-    'not suppress other listeners on window, only stopImmediatePropagation does');
-  assert.equal(r.focusMovedOffGame, true,
-    `the panel should hold focus while open; it is on <${r.focusHolder}>, ` +
-    `panelOpen=${r.panelOpen}, fullscreenElement=${r.fs} ` +
-    '(a fullscreen element confines focus to its own subtree)');
-  assert.equal(r.heldWhileOpen, 0, 'no key should be held while typing');
-  assert.equal(r.reaches, 1, 'closing the panel must give the keyboard back');
+  assert.equal(r.leaked, 0, 'keystrokes leaked to the game while typing in the sidebar');
+  assert.equal(r.heldWhileTyping, 0, 'no key should be held while typing');
+  assert.equal(r.reaches, 1, 'the game must get the keyboard back when it has focus');
 });
 
-test('Ctrl+K opens the browser and Escape closes it', { skip }, async () => {
-  await page.keyboard.press('Control+k');
-  await page.waitForTimeout(400);
-  assert.equal(await page.evaluate(() => !document.getElementById('items-panel').hidden),
-               true, 'Ctrl+K should open the panel');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(300);
+test('collapsing the sidebar gives the game the full width', { skip }, async () => {
+  const before = await page.evaluate(() =>
+    document.getElementById('stage').getBoundingClientRect().width);
+  await page.evaluate(() => document.getElementById('btn-items-close').click());
+  await page.waitForTimeout(250);
+  const collapsed = await page.evaluate(() => ({
+    hidden: document.getElementById('items-panel').hidden,
+    width: document.getElementById('stage').getBoundingClientRect().width,
+    focused: document.activeElement === window.__player,
+  }));
+  assert.equal(collapsed.hidden, true, 'the sidebar should collapse');
+  assert.ok(collapsed.width >= before, 'the game should not shrink when the sidebar hides');
+  assert.equal(collapsed.focused, true, 'collapsing hands the keyboard back to the game');
+
+  await page.evaluate(() => document.getElementById('btn-items').click());
+  await page.waitForTimeout(250);
   assert.equal(await page.evaluate(() => document.getElementById('items-panel').hidden),
-               true, 'Escape should close it');
+               false, 'the Items button should bring it back');
 });
 
-test('the closed item panel does not cover the game', { skip }, async () => {
-  const hit = await page.evaluate(() => {
-    const r = document.getElementById('stage').getBoundingClientRect();
-    const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return el?.tagName?.toLowerCase() ?? null;
-  });
-  assert.equal(hit, 'ruffle-player', `something covers the stage: <${hit}>`);
+test('Ctrl+K focuses the search box without disturbing the game', { skip }, async () => {
+  await page.evaluate(() => window.__isaacInput.ensureFocus());
+  await page.keyboard.press('Control+k');
+  await page.waitForTimeout(300);
+  const focused = await page.evaluate(() =>
+    document.activeElement === document.getElementById('items-search'));
+  assert.equal(focused, true, 'Ctrl+K should put the cursor in the search box');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+  assert.equal(await page.evaluate(() => document.activeElement === window.__player),
+               true, 'Escape should return the keyboard to the game');
 });
 
 test('the game canvas can be captured for Auto-ID', { skip }, async () => {
@@ -683,14 +704,20 @@ test('a missing item list degrades to a message, not a broken page', { skip }, a
     await p2.route('**/data/items.json', route => route.fulfill({ status: 404, body: 'nope' }));
     await p2.goto(`${srv.url}/?renderer=canvas`, { waitUntil: 'load' });
     await p2.waitForFunction(() => window.__player?.metadata != null, { timeout: 120000 });
-    await p2.evaluate(() => document.getElementById('btn-items').click());
+    // The sidebar is visible by default, and its collapsed state persists in
+    // localStorage across pages of the same origin -- so expand it explicitly
+    // rather than assuming a click will open it.
+    await p2.evaluate(() => {
+      try { localStorage.removeItem('cabinet:sidebar-collapsed'); } catch {}
+      document.getElementById('items-panel').hidden = false;
+    });
     await p2.waitForTimeout(600);
     const state = await p2.evaluate(() => ({
       open: !document.getElementById('items-panel').hidden,
       msg: document.getElementById('items-empty').textContent,
       playing: window.__player?.metadata != null,
     }));
-    assert.equal(state.open, true, 'the panel should still open');
+    assert.equal(state.open, true, 'the sidebar should still be usable');
     assert.match(state.msg, /could not be loaded|unavailable/i,
       'it should explain that the list is missing');
     assert.match(state.msg, /game is unaffected/i,

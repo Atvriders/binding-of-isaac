@@ -34,6 +34,9 @@ export function parseItems(html) {
     if (!name || seen.has(name.toLowerCase())) continue;
     seen.add(name.toLowerCase());
 
+    // The icon is a cell in a horizontal sprite strip, addressed by an itmN class.
+    const spriteRaw = /class=['"][^'"]*\bitm(\d+)\b[^'"]*['"]/.exec(body);
+
     const idRaw = /<p class="itemid">([\s\S]*?)<\/p>/.exec(body);
     const idNum = idRaw ? /(\d+)/.exec(decode(idRaw[1])) : null;
 
@@ -48,6 +51,7 @@ export function parseItems(html) {
       sid,
       name,
       description,
+      sprite: spriteRaw ? Number(spriteRaw[1]) : null,
       url: `${SOURCE}#${tid}`,
     });
   }
@@ -55,3 +59,27 @@ export function parseItems(html) {
 }
 
 export const SOURCE_URL = SOURCE;
+
+/**
+ * Sprite geometry from the stylesheet.
+ *
+ * The strip is one row of variable-width cells: `.itmN{background-position:-X 0;
+ * width:Wpx}`, with the row height on `.item`. Returns { cells: {N: {x, w}}, height }.
+ */
+export function parseSpriteRules(css) {
+  if (typeof css !== 'string' || !css) return { cells: {}, height: 50, image: null };
+
+  const cells = {};
+  for (const m of css.matchAll(/\.itm(\d+)\s*\{([^}]*)\}/g)) {
+    const body = m[2];
+    const pos = /background-position\s*:\s*(-?\d+)px\s+(-?\d+)px?/.exec(body)
+             || /background-position\s*:\s*(-?\d+)(?:px)?\s+(-?\d+)(?:px)?/.exec(body);
+    const w = /width\s*:\s*(\d+)px/.exec(body);
+    if (!pos || !w) continue;
+    cells[m[1]] = { x: Math.abs(Number(pos[1])), y: Math.abs(Number(pos[2])), w: Number(w[1]) };
+  }
+
+  const h = /\.item\s*\{[^}]*height\s*:\s*(\d+)px/.exec(css);
+  const img = /\.vitem\s*\{[^}]*url\(\s*['"]?([^'")]+)['"]?\s*\)/.exec(css);
+  return { cells, height: h ? Number(h[1]) : 50, image: img ? img[1] : null };
+}

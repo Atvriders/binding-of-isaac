@@ -34,7 +34,27 @@
     <button type="button" id="btn-warn-dismiss" aria-label="Dismiss">&times;</button>
   </div>
 
-<main class="frame">
+<div class="workspace">
+
+  <aside id="items-panel" class="sidebar">
+    <div class="side-head">
+      <input id="items-search" type="search" placeholder="Search items&hellip;"
+             autocomplete="off" spellcheck="false">
+      <button type="button" id="btn-items-close" title="Collapse" aria-label="Collapse">&laquo;</button>
+    </div>
+    <div class="side-meta"><span id="items-count" class="dim"></span></div>
+    <p id="items-empty" class="dim" hidden></p>
+    <ul id="items-results" class="items-grid"></ul>
+    <div id="item-detail" class="item-detail" hidden></div>
+    <p class="dim items-credit">Item data and icons come from
+      <a href="https://www.tboi.com/original" target="_blank" rel="noopener noreferrer">tboi.com</a>,
+      fetched at runtime.</p>
+  </aside>
+
+  <div id="side-resize" class="resize-handle" role="separator"
+       aria-orientation="vertical" tabindex="-1" title="Drag to resize"></div>
+
+  <main class="frame">
   <div id="stage" class="stage"></div>
 
   <div id="loading" class="overlay">
@@ -70,28 +90,12 @@
     </div>
   </div>
 </main>
+</div>
 
 <div id="pickup-toast" class="toast" hidden role="status" aria-live="polite">
   <span class="toast-label">Picked up</span>
   <span id="pickup-name" class="toast-name"></span>
   <p id="pickup-desc" class="toast-desc"></p>
-</div>
-
-<div id="items-panel" class="modal" hidden>
-  <div class="sheet sheet-wide">
-    <div class="items-head">
-      <h2>Items</h2>
-      <span id="items-count" class="dim"></span>
-      <button type="button" id="btn-items-close" aria-label="Close">&times;</button>
-    </div>
-    <input id="items-search" type="search" placeholder="Search by name or id&hellip;"
-           autocomplete="off" spellcheck="false">
-    <p id="items-empty" class="dim" hidden></p>
-    <ul id="items-results" class="items-results"></ul>
-    <p class="dim items-credit">Item data is fetched from
-      <a href="https://www.tboi.com/original" target="_blank" rel="noopener noreferrer">tboi.com</a>
-      at runtime and is not part of this image.</p>
-  </div>
 </div>
 
 <div id="help" class="modal" hidden>

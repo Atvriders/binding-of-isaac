@@ -2,7 +2,7 @@ import { bindTo, releaseAll, ensureFocus } from './input.js';
 import { startGamepad } from './gamepad.js';
 import { initTouch, isTouchDevice } from './touch.js';
 import { initUi } from './ui.js';
-import { initItems, installKeyIsolation, itemList, isOpen as itemsOpen } from './items.js';
+import { initItems, installKeyIsolation, itemList, hasKeyboard, revealItem } from './items.js';
 import { startPickupWatch, stopPickupWatch, isWatching, onPickup } from './pickup.js';
 
 const GAME_URL = '/game/isaac.swf';
@@ -68,6 +68,7 @@ function initPickup(player) {
     nameEl.textContent = ev.item.name;
     descEl.textContent = ev.item.description || '';
     toast.hidden = false;
+    revealItem(ev.item);          // surface it in the grid too
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => { toast.hidden = true; }, 9000);
   });
@@ -165,13 +166,14 @@ async function main() {
     if (!document.hidden) ensureFocus();
   });
   // Clicking ANY control moves focus off the game, and Ruffle then ignores the
-  // keyboard. Hand focus back after every one of them, not just the toolbar --
-  // except while the item panel is open, which legitimately owns the keyboard.
-  // Without that exception, clicking "Items" opened the panel and then immediately
-  // pulled focus back to the game, so typing landed nowhere.
+  // keyboard. Hand focus back after every one of them -- unless the sidebar
+  // currently holds focus, in which case it legitimately owns the keyboard.
+  // The test is "does the sidebar have focus", not "is it visible": the sidebar is
+  // always on screen, so keying off visibility would stop the game ever getting
+  // the keyboard back.
   document.addEventListener('click', e => {
     if (!e.target.closest('button, input, a')) return;
-    setTimeout(() => { if (!itemsOpen()) ensureFocus(); }, 0);
+    setTimeout(() => { if (!hasKeyboard()) ensureFocus(); }, 0);
   });
 
   try {

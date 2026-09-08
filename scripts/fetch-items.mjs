@@ -4,9 +4,11 @@
 // entry links back. Never fatal -- the game must stay playable without this.
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseItems, SOURCE_URL } from './parse-items.mjs';
+import { parseItems, parseSpriteRules, SOURCE_URL } from './parse-items.mjs';
 
 const OUT = process.env.ITEMS_FILE || '/srv/data/items.json';
+const SPRITE_OUT = OUT.replace(/items\.json$/, 'item-sprite.png');
+const CSS_URL = process.env.ITEMS_CSS_URL || 'https://www.tboi.com/assets/main.css';
 const URL_ = process.env.ITEMS_URL || SOURCE_URL;
 const MAX_AGE_DAYS = Number(process.env.ITEMS_MAX_AGE_DAYS || 7);
 
@@ -41,6 +43,26 @@ async function main() {
     return fs.existsSync(OUT) ? 0 : 1;   // keep whatever we already had
   }
 
+  // Icon geometry and the sprite itself. Best-effort: without them the browser
+  // falls back to text tiles, which is a degraded list rather than a broken one.
+  let sprite = { cells: {}, height: 50, image: null };
+  try {
+    const cssRes = await fetch(CSS_URL, { signal: AbortSignal.timeout(30000) });
+    if (cssRes.ok) sprite = parseSpriteRules(await cssRes.text());
+  } catch (e) { log('icon stylesheet unavailable:', String(e)); }
+
+  if (sprite.image) {
+    try {
+      const imgUrl = new URL(sprite.image.replace(/^\.\./, ''), new URL(CSS_URL).origin).href;
+      const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(60000) });
+      if (imgRes.ok) {
+        fs.mkdirSync(path.dirname(SPRITE_OUT), { recursive: true });
+        fs.writeFileSync(SPRITE_OUT, Buffer.from(await imgRes.arrayBuffer()));
+        log(`wrote sprite sheet to ${SPRITE_OUT}`);
+      }
+    } catch (e) { log('sprite sheet unavailable:', String(e)); }
+  }
+
   const items = parseItems(html);
   if (items.length === 0) {
     log('parsed nothing; the page layout has probably changed. keeping any existing list.');
@@ -49,10 +71,20 @@ async function main() {
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   const tmp = `${OUT}.part`;
+  // Attach each item's cell so the page can position the sprite without the CSS.
+  let withIcons = 0;
+  for (const it of items) {
+    const cell = it.sprite != null ? sprite.cells[it.sprite] : null;
+    if (cell) { it.icon = { x: cell.x, y: cell.y, w: cell.w, h: sprite.height }; withIcons++; }
+    else it.icon = null;
+  }
+
   fs.writeFileSync(tmp, JSON.stringify(
-    { source: URL_, fetchedAt: new Date().toISOString(), count: items.length, items }));
+    { source: URL_, fetchedAt: new Date().toISOString(), count: items.length,
+      spriteUrl: fs.existsSync(SPRITE_OUT) ? '/data/item-sprite.png' : null,
+      withIcons, items }));
   fs.renameSync(tmp, OUT);
-  log(`wrote ${items.length} items to ${OUT}`);
+  log(`wrote ${items.length} items (${withIcons} with icons) to ${OUT}`);
   return 0;
 }
 
