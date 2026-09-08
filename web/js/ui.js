@@ -12,11 +12,13 @@ export function initUi({ player, stage }) {
   };
 
   $('btn-fullscreen').addEventListener('click', () => {
-    // Ruffle owns its own fullscreen handling; fall back to the DOM API.
-    try {
-      if (typeof player.enterFullscreen === 'function') { player.enterFullscreen(); return; }
-    } catch { /* fall through */ }
-    (stage.requestFullscreen?.call(stage) ?? Promise.reject())
+    // Fullscreen the whole page, not just the player. The browser confines focus to
+    // the fullscreen element's subtree, so fullscreening the stage alone would leave
+    // the toolbar and the item panel unfocusable -- you could open the item browser
+    // and not be able to type in it.
+    if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
+    const root = document.documentElement;
+    (root.requestFullscreen?.call(root) ?? Promise.reject())
       .catch(() => say('Fullscreen was refused by the browser.', 'warn'));
   });
 

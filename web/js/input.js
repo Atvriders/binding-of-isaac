@@ -23,10 +23,15 @@ export function bindTo(el) {
   targets = [el, el.shadowRoot?.querySelector('canvas')].filter(Boolean);
 }
 
+// While a panel legitimately owns the keyboard, the game must stop reclaiming focus:
+// otherwise typing lands on the player instead of the search box and goes nowhere.
+let focusSuppressed = false;
+export function setFocusSuppressed(on) { focusSuppressed = !!on; }
+
 // Ruffle drops key events while the player is unfocused, which would otherwise make
 // every button on screen and on the pad do nothing until the user clicks the game.
 export function ensureFocus() {
-  if (!player) return;
+  if (!player || focusSuppressed) return;
   const root = player.getRootNode?.();
   const active = root instanceof ShadowRoot ? root.activeElement : document.activeElement;
   if (active !== player) {
@@ -91,5 +96,5 @@ export const isHeld = action => down.has(action);
 
 if (typeof window !== 'undefined') {
   window.__isaacInput = { setFrom, clearSource, press, release, releaseAll,
-                          heldActions, isHeld, ensureFocus };
+                          heldActions, isHeld, ensureFocus, setFocusSuppressed };
 }

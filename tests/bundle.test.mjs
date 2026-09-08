@@ -42,7 +42,7 @@ test('the entrypoint rejects a corrupt game file instead of serving it', () => {
   let failed = false, out = '';
   try {
     execFileSync('sh', [path.join(REPO, 'scripts', 'docker-entrypoint.sh'), 'true'], {
-      env: { ...process.env, GAME_DIR: tmp,
+      env: { ...process.env, GAME_DIR: tmp, ITEMS_ENABLED: '0',
              GAME_SHA256: '3535d67fa608f28ea13697ba711a22922ab107daf5614978da3a07b623a6a761' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -57,7 +57,8 @@ test('the entrypoint accepts a good file and starts the server', () => {
   fs.writeFileSync(path.join(tmp, 'isaac.swf'), 'anything');
   const out = execFileSync('sh',
     [path.join(REPO, 'scripts', 'docker-entrypoint.sh'), 'echo', 'STARTED'],
-    { env: { ...process.env, GAME_DIR: tmp, GAME_SHA256: 'skip' }, encoding: 'utf8' });
+    { env: { ...process.env, GAME_DIR: tmp, GAME_SHA256: 'skip', ITEMS_ENABLED: '0' },
+      encoding: 'utf8' });
   fs.rmSync(tmp, { recursive: true, force: true });
   assert.match(out, /STARTED/, 'must exec the command it was given');
 });
@@ -168,4 +169,27 @@ test('nginx declares no types block that would discard mime.types', () => {
   const blocks = [...conf.matchAll(/^\s*types\s*\{/gm)];
   assert.equal(blocks.length, 0,
     'a types{} block here replaces the inherited MIME map rather than extending it');
+});
+
+test('a failing item list never stops the container starting', () => {
+  // The entrypoint runs under `set -e`; an unwritable data directory must degrade
+  // to a warning, not abort the game.
+  const tmp = fs.mkdtempSync('/tmp/isaac-test-');
+  fs.writeFileSync(path.join(tmp, 'isaac.swf'), 'anything');
+  const out = execFileSync('sh',
+    [path.join(REPO, 'scripts', 'docker-entrypoint.sh'), 'echo', 'STARTED'],
+    { env: { ...process.env, GAME_DIR: tmp, GAME_SHA256: 'skip',
+             ITEMS_FILE: '/proc/definitely/not/writable/items.json' },
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  fs.rmSync(tmp, { recursive: true, force: true });
+  assert.match(out, /STARTED/, 'the server must start even when item data cannot be written');
+});
+
+test('the image ships no scraped item data', () => {
+  // Descriptions belong to the source site: fetched into the volume at runtime,
+  // never committed and never baked into the image.
+  assert.ok(read('.gitignore').includes('data/'), 'item data must be gitignored');
+  const df = read('Dockerfile');
+  assert.ok(!/COPY\s+data\//.test(df), 'no item data may be copied into the image');
+  assert.match(df, /fetch-items\.mjs/, 'the fetcher must ship so it can run at start');
 });

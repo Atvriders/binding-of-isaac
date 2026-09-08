@@ -33,4 +33,28 @@ if [ ! -s game/isaac.swf ]; then
 else
   echo "==> game file already present"
 fi
+# Item list, for the browser and its tests. Written under ./data, which is
+# gitignored: the descriptions belong to the source site and are not committed.
+mkdir -p data
+ITEMS_FILE="$PWD/data/items.json" node scripts/fetch-items.mjs || \
+  echo "!! item list unavailable; the browser will report that and the game still runs"
+
+# OCR engine for Auto-ID. Optional: without it the feature reports unavailable.
+if [ ! -f web/vendor/tesseract/tesseract.min.js ]; then
+  echo "==> fetching OCR engine"
+  mkdir -p web/vendor/tesseract/core
+  TJS="${TESSERACT_JS_VERSION:-5.1.1}"
+  TCORE="${TESSERACT_CORE_VERSION:-5.1.1}"
+  curl -fsSL --retry 3 -o web/vendor/tesseract/tesseract.min.js \
+    "https://unpkg.com/tesseract.js@${TJS}/dist/tesseract.min.js" || true
+  curl -fsSL --retry 3 -o web/vendor/tesseract/worker.min.js \
+    "https://unpkg.com/tesseract.js@${TJS}/dist/worker.min.js" || true
+  for f in tesseract-core-simd.wasm.js tesseract-core.wasm.js; do
+    curl -fsSL --retry 3 -o "web/vendor/tesseract/core/$f" \
+      "https://unpkg.com/tesseract.js-core@${TCORE}/$f" || true
+  done
+  curl -fsSL --retry 3 -o web/vendor/tesseract/eng.traineddata.gz \
+    "https://tessdata.projectnaptha.com/4.0.0/eng.traineddata.gz" || true
+fi
+
 echo "==> ready"

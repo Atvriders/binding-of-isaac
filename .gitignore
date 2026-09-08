@@ -10,3 +10,5 @@ web/ruffle/
 # Game data never belongs in this repository or its image.
 game/
 *.swf
+data/
+web/vendor/

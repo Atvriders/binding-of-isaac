@@ -11,6 +11,7 @@ import { reachMenu, enterRun, clickStage, reachMenuByLogo } from './helpers/flow
 const WEB = path.join(REPO, 'web');
 const RUFFLE = path.join(WEB, 'ruffle');
 const GAME = path.join(REPO, 'game');
+const DATA = path.join(REPO, 'data');
 
 const ready = fs.existsSync(path.join(RUFFLE, 'ruffle.js'))
            && fs.existsSync(path.join(GAME, 'isaac.swf'));
@@ -24,7 +25,7 @@ before(async () => {
   // Serve under the container's real Content-Security-Policy so the suite catches
   // policy violations that would otherwise only appear behind nginx.
   srv = await startServer({ webRoot: WEB, ruffleDir: RUFFLE, gameDir: GAME,
-                            csp: nginxCsp() });
+                            dataDir: DATA, csp: nginxCsp() });
   browser = await chromium.launch({ executablePath: chromePath(), headless: true,
                                     args: LAUNCH_ARGS });
   page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
@@ -491,7 +492,24 @@ test('clicking a toolbar control hands focus back to the game', { skip }, async 
     const focused = await page.evaluate(() => document.activeElement === window.__player);
     assert.equal(focused, true, `focus was left on #${id} instead of the game`);
   }
-  await page.evaluate(() => document.getElementById('help').setAttribute('hidden', ''));
+  await page.evaluate(async () => {
+    document.getElementById('help').setAttribute('hidden', '');
+    if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch {} }
+  });
+});
+
+test('fullscreen targets the whole page so panels stay usable', { skip }, async () => {
+  // Fullscreening only the stage would confine focus to it, leaving the item panel
+  // open but impossible to type into.
+  const target = await page.evaluate(() => {
+    const btn = document.getElementById('btn-fullscreen');
+    return btn ? 'ok' : 'missing';
+  });
+  assert.equal(target, 'ok');
+  const src = await (await fetch(`${srv.url}/js/ui.js`)).text();
+  assert.match(src, /documentElement/, 'fullscreen must target the page, not the stage');
+  assert.ok(!/stage\.requestFullscreen/.test(src),
+    'fullscreening the stage alone strands the toolbar and panels outside it');
 });
 
 test('the default renderer can actually draw room graphics', { skip }, async () => {
@@ -530,5 +548,153 @@ test('the default renderer can actually draw room graphics', { skip }, async () 
     console.log(`      room: ${room.distinct} colours, ${room.dominantPct}% dominant`);
     assert.ok(room.dominantPct < 90,
       `the room is ${room.dominantPct}% a single colour, so it is not drawing textures`);
+  } finally { await p2.close(); }
+});
+
+test('the item browser opens, filters and closes', { skip }, async () => {
+  await page.evaluate(() => document.getElementById('btn-items').click());
+  await page.waitForTimeout(400);
+  const opened = await page.evaluate(() => ({
+    visible: !document.getElementById('items-panel').hidden,
+    count: document.getElementById('items-count').textContent,
+    rows: document.querySelectorAll('#items-results .item-row').length,
+  }));
+  assert.equal(opened.visible, true, 'the panel should open');
+  assert.ok(opened.rows > 0, `expected item rows, got ${opened.rows} (${opened.count})`);
+
+  const filtered = await page.evaluate(async () => {
+    const box = document.getElementById('items-search');
+    box.value = 'onion';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 200));
+    return [...document.querySelectorAll('#items-results .item-name')].map(e => e.textContent);
+  });
+  assert.ok(filtered.length > 0, 'searching should return something');
+  assert.ok(filtered.every(n => /onion/i.test(n)), `unrelated results: ${filtered}`);
+
+  await page.evaluate(() => document.getElementById('btn-items-close').click());
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => ({
+    hidden: document.getElementById('items-panel').hidden,
+    focused: document.activeElement === window.__player,
+  }));
+  assert.equal(after.hidden, true, 'the panel should close');
+  assert.equal(after.focused, true, 'focus must return to the game');
+});
+
+test('typing in the item search never reaches the game', { skip }, async () => {
+  // Ruffle listens for keys on window, so without isolation every letter typed here
+  // would also drive the character.
+  const r = await page.evaluate(async () => {
+    document.getElementById('btn-items').click();
+    await new Promise(res => setTimeout(res, 300));
+
+    // A bubble-phase listener on window stands in for Ruffle's own: if the capture
+    // phase stopped propagation, this never fires.
+    let leaked = 0;
+    const spy = () => { leaked++; };
+    window.addEventListener('keydown', spy);
+    for (const key of ['w', 'a', 's', 'd', 'e']) {
+      window.dispatchEvent(new KeyboardEvent('keydown',
+        { key, code: `Key${key.toUpperCase()}`, bubbles: true, composed: true }));
+    }
+    const heldWhileOpen = window.__isaacInput.heldActions().length;
+    // Ruffle only acts on keys while its player holds focus, so the panel taking
+    // focus is the second line of defence behind stopImmediatePropagation.
+    const a = document.activeElement;
+    const focusHolder = a === window.__player ? 'ruffle-player'
+      : a ? `${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''}` : 'null';
+    const focusMovedOffGame = a !== window.__player;
+    const panelOpen = !document.getElementById('items-panel').hidden;
+    const fs = document.fullscreenElement
+      ? (document.fullscreenElement.id || document.fullscreenElement.tagName.toLowerCase())
+      : 'none';
+    window.removeEventListener('keydown', spy);
+
+    document.getElementById('btn-items-close').click();
+    await new Promise(res => setTimeout(res, 200));
+
+    // ...and once closed, keys must reach the game again.
+    let reaches = 0;
+    const spy2 = () => { reaches++; };
+    window.addEventListener('keydown', spy2);
+    window.dispatchEvent(new KeyboardEvent('keydown',
+      { key: 'w', code: 'KeyW', bubbles: true, composed: true }));
+    window.removeEventListener('keydown', spy2);
+    return { leaked, heldWhileOpen, reaches, focusMovedOffGame, focusHolder, panelOpen, fs };
+  });
+  assert.equal(r.leaked, 0,
+    'keystrokes leaked to the game while the panel was open; stopPropagation does ' +
+    'not suppress other listeners on window, only stopImmediatePropagation does');
+  assert.equal(r.focusMovedOffGame, true,
+    `the panel should hold focus while open; it is on <${r.focusHolder}>, ` +
+    `panelOpen=${r.panelOpen}, fullscreenElement=${r.fs} ` +
+    '(a fullscreen element confines focus to its own subtree)');
+  assert.equal(r.heldWhileOpen, 0, 'no key should be held while typing');
+  assert.equal(r.reaches, 1, 'closing the panel must give the keyboard back');
+});
+
+test('Ctrl+K opens the browser and Escape closes it', { skip }, async () => {
+  await page.keyboard.press('Control+k');
+  await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(() => !document.getElementById('items-panel').hidden),
+               true, 'Ctrl+K should open the panel');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => document.getElementById('items-panel').hidden),
+               true, 'Escape should close it');
+});
+
+test('the closed item panel does not cover the game', { skip }, async () => {
+  const hit = await page.evaluate(() => {
+    const r = document.getElementById('stage').getBoundingClientRect();
+    const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return el?.tagName?.toLowerCase() ?? null;
+  });
+  assert.equal(hit, 'ruffle-player', `something covers the stage: <${hit}>`);
+});
+
+test('the game canvas can be captured for Auto-ID', { skip }, async () => {
+  // drawImage returns blank on Ruffle's WebGL canvas; captureStream is the only way
+  // to read the pixels, and Auto-ID depends entirely on it.
+  const r = await page.evaluate(async () => {
+    const cvs = window.__player.shadowRoot.querySelector('canvas');
+    if (!cvs.captureStream) return { supported: false };
+    const stream = cvs.captureStream(5);
+    const v = document.createElement('video');
+    v.muted = true; v.srcObject = stream; await v.play();
+    await new Promise(res => setTimeout(res, 1200));
+    const t = document.createElement('canvas'); t.width = 64; t.height = 48;
+    const x = t.getContext('2d'); x.drawImage(v, 0, 0, 64, 48);
+    const d = x.getImageData(0, 0, 64, 48).data;
+    const seen = new Set();
+    for (let i = 0; i < d.length; i += 4) seen.add(`${d[i]},${d[i+1]},${d[i+2]}`);
+    stream.getTracks().forEach(tr => tr.stop());
+    return { supported: true, colours: seen.size, w: v.videoWidth, h: v.videoHeight };
+  });
+  assert.equal(r.supported, true, 'captureStream is required for Auto-ID');
+  assert.ok(r.w > 0 && r.h > 0, 'the captured video must have dimensions');
+  assert.ok(r.colours > 8, `captured frame looks blank (${r.colours} colours)`);
+});
+
+test('a missing item list degrades to a message, not a broken page', { skip }, async () => {
+  const p2 = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+  try {
+    await p2.route('**/data/items.json', route => route.fulfill({ status: 404, body: 'nope' }));
+    await p2.goto(`${srv.url}/?renderer=canvas`, { waitUntil: 'load' });
+    await p2.waitForFunction(() => window.__player?.metadata != null, { timeout: 120000 });
+    await p2.evaluate(() => document.getElementById('btn-items').click());
+    await p2.waitForTimeout(600);
+    const state = await p2.evaluate(() => ({
+      open: !document.getElementById('items-panel').hidden,
+      msg: document.getElementById('items-empty').textContent,
+      playing: window.__player?.metadata != null,
+    }));
+    assert.equal(state.open, true, 'the panel should still open');
+    assert.match(state.msg, /could not be loaded|unavailable/i,
+      'it should explain that the list is missing');
+    assert.match(state.msg, /game is unaffected/i,
+      'and reassure that the game still works');
+    assert.equal(state.playing, true, 'the game must keep working regardless');
   } finally { await p2.close(); }
 });

@@ -57,4 +57,30 @@ fi
 # A stray .part from a killed container should never accumulate.
 rm -f "${GAME_FILE}.part" 2>/dev/null || true
 
+# ---- item list -------------------------------------------------------------
+# Fetched at runtime into the volume: the descriptions belong to the source site,
+# so they are never baked into this image. Failure here must never stop the game.
+ITEMS_FILE="${ITEMS_FILE:-/srv/data/items.json}"
+export ITEMS_FILE
+
+# Every step here is best-effort. The entrypoint runs under `set -e`, so anything
+# that can fail must be guarded or a missing item list would stop the game starting.
+if [ "${ITEMS_ENABLED:-1}" = "1" ] && mkdir -p "$(dirname "$ITEMS_FILE")" 2>/dev/null; then
+  if node /usr/local/lib/isaac/fetch-items.mjs; then
+    log "item list ready"
+  else
+    log "item list unavailable; the browser will say so and the game is unaffected"
+  fi
+
+  # Keep it fresh without a second container: re-check once a day.
+  (
+    while true; do
+      sleep "${ITEMS_REFRESH_SECONDS:-86400}"
+      node /usr/local/lib/isaac/fetch-items.mjs >/dev/null 2>&1 || true
+    done
+  ) >/dev/null 2>&1 &
+elif [ "${ITEMS_ENABLED:-1}" = "1" ]; then
+  log "cannot write $(dirname "$ITEMS_FILE"); the item browser will be unavailable"
+fi
+
 exec "$@"

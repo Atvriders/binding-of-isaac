@@ -14,6 +14,8 @@
   <span id="pad-indicator" class="pill" hidden></span>
   <span id="status" class="status" role="status" aria-live="polite"></span>
   <nav class="actions">
+    <button id="btn-items" type="button">Items</button>
+    <button id="btn-watch" type="button" aria-pressed="false">Auto-ID: off</button>
     <button id="btn-help" type="button">Controls</button>
     <button id="btn-export" type="button">Export save</button>
     <button id="btn-import" type="button">Import save</button>
@@ -69,6 +71,29 @@
   </div>
 </main>
 
+<div id="pickup-toast" class="toast" hidden role="status" aria-live="polite">
+  <span class="toast-label">Picked up</span>
+  <span id="pickup-name" class="toast-name"></span>
+  <p id="pickup-desc" class="toast-desc"></p>
+</div>
+
+<div id="items-panel" class="modal" hidden>
+  <div class="sheet sheet-wide">
+    <div class="items-head">
+      <h2>Items</h2>
+      <span id="items-count" class="dim"></span>
+      <button type="button" id="btn-items-close" aria-label="Close">&times;</button>
+    </div>
+    <input id="items-search" type="search" placeholder="Search by name or id&hellip;"
+           autocomplete="off" spellcheck="false">
+    <p id="items-empty" class="dim" hidden></p>
+    <ul id="items-results" class="items-results"></ul>
+    <p class="dim items-credit">Item data is fetched from
+      <a href="https://www.tboi.com/original" target="_blank" rel="noopener noreferrer">tboi.com</a>
+      at runtime and is not part of this image.</p>
+  </div>
+</div>
+
 <div id="help" class="modal" hidden>
   <div class="sheet">
     <h2>Controls</h2>
@@ -83,6 +108,11 @@
     <h3>Controller</h3>
     <p class="dim">Left stick or d-pad moves. Right stick or the face buttons shoot.
        Shoulders and triggers are bomb, item and pill. Start pauses.</p>
+    <h3>Item browser</h3>
+    <p class="dim"><strong>Ctrl&nbsp;+&nbsp;K</strong> opens the item list, or use the
+       Items button. Typing there never reaches the game. <strong>Auto-ID</strong>
+       watches the screen and names items as you pick them up.</p>
+
     <h3>Saves</h3>
     <p class="dim">Progress is stored by your browser, not by the server, so restarting
        the container never loses it — but clearing site data will. Use

@@ -2,6 +2,8 @@ import { bindTo, releaseAll, ensureFocus } from './input.js';
 import { startGamepad } from './gamepad.js';
 import { initTouch, isTouchDevice } from './touch.js';
 import { initUi } from './ui.js';
+import { initItems, installKeyIsolation, itemList, isOpen as itemsOpen } from './items.js';
+import { startPickupWatch, stopPickupWatch, isWatching, onPickup } from './pickup.js';
 
 const GAME_URL = '/game/isaac.swf';
 
@@ -45,6 +47,51 @@ function webglAvailable() {
   } catch { return false; }
 }
 
+/** Auto-ID: watch the screen and name items as they are picked up. Off by default
+ *  because it runs OCR while you play. */
+function initPickup(player) {
+  const btn = document.getElementById('btn-watch');
+  const toast = document.getElementById('pickup-toast');
+  const nameEl = document.getElementById('pickup-name');
+  const descEl = document.getElementById('pickup-desc');
+  if (!btn) return;
+
+  let hideTimer = null;
+  onPickup(ev => {
+    if (ev.error) {
+      btn.textContent = 'Auto-ID: unavailable';
+      btn.setAttribute('aria-pressed', 'false');
+      btn.disabled = true;
+      btn.title = ev.error;
+      return;
+    }
+    nameEl.textContent = ev.item.name;
+    descEl.textContent = ev.item.description || '';
+    toast.hidden = false;
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { toast.hidden = true; }, 9000);
+  });
+
+  btn.addEventListener('click', async () => {
+    if (isWatching()) {
+      stopPickupWatch();
+      btn.textContent = 'Auto-ID: off';
+      btn.setAttribute('aria-pressed', 'false');
+      return;
+    }
+    btn.textContent = 'Auto-ID: starting…';
+    const r = await startPickupWatch(player, itemList);
+    if (r.ok) {
+      btn.textContent = 'Auto-ID: on';
+      btn.setAttribute('aria-pressed', 'true');
+    } else {
+      btn.textContent = 'Auto-ID: unavailable';
+      btn.title = r.error || '';
+      btn.disabled = true;
+    }
+  });
+}
+
 function fail(msg, detail) {
   const el = document.getElementById('boot-error');
   el.hidden = false;
@@ -60,6 +107,10 @@ async function main() {
     fail('Ruffle failed to load.', 'The emulator bundle did not initialise.');
     return;
   }
+
+  // Before the player exists: Ruffle adds its own window key handlers when created,
+  // and ours must be registered first to be able to suppress them.
+  installKeyIsolation();
 
   const player = window.RufflePlayer.newest().createPlayer();
   // <ruffle-player> defaults to Flash's legacy 550x400 and ignores its container,
@@ -87,6 +138,8 @@ async function main() {
   bindTo(player);
   startGamepad();
   initUi({ player, stage });
+  initItems();
+  initPickup(player);
 
   // Bind unconditionally so the controls work the instant they are shown; only
   // visibility is conditional. ?touch=1 forces them on, ?touch=0 forces them off.
@@ -112,9 +165,13 @@ async function main() {
     if (!document.hidden) ensureFocus();
   });
   // Clicking ANY control moves focus off the game, and Ruffle then ignores the
-  // keyboard. Hand focus back after every one of them, not just the toolbar.
+  // keyboard. Hand focus back after every one of them, not just the toolbar --
+  // except while the item panel is open, which legitimately owns the keyboard.
+  // Without that exception, clicking "Items" opened the panel and then immediately
+  // pulled focus back to the game, so typing landed nowhere.
   document.addEventListener('click', e => {
-    if (e.target.closest('button, input, a')) setTimeout(ensureFocus, 0);
+    if (!e.target.closest('button, input, a')) return;
+    setTimeout(() => { if (!itemsOpen()) ensureFocus(); }, 0);
   });
 
   try {

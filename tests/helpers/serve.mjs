@@ -22,12 +22,17 @@ const TYPES = {
 
 // Serves exactly what nginx serves: web/ at the root, ruffle/ and game/ mapped
 // the same way the container maps them.
-export function startServer({ webRoot, ruffleDir, gameDir, port = 0, csp = null }) {
+export function startServer({ webRoot, ruffleDir, gameDir, dataDir = null,
+                             port = 0, csp = null }) {
   const server = http.createServer((req, res) => {
     const url = decodeURIComponent(req.url.split('?')[0]);
     let file;
     if (url === '/healthz') { res.writeHead(200); return res.end('ok\n'); }
-    if (url.startsWith('/ruffle/')) file = path.join(ruffleDir, url.slice('/ruffle/'.length));
+    if (url.startsWith('/data/')) {
+      if (!dataDir) { res.writeHead(404); return res.end('no item data'); }
+      file = path.join(dataDir, url.slice('/data/'.length));
+    }
+    else if (url.startsWith('/ruffle/')) file = path.join(ruffleDir, url.slice('/ruffle/'.length));
     else if (url.startsWith('/game/')) file = path.join(gameDir, url.slice('/game/'.length));
     else file = path.join(webRoot, url === '/' ? 'index.html' : url.replace(/^\//, ''));
 
