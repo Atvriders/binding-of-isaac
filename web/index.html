@@ -36,23 +36,6 @@
 
 <div class="workspace">
 
-  <aside id="items-panel" class="sidebar">
-    <div class="side-head">
-      <input id="items-search" type="search" placeholder="Search items&hellip;"
-             autocomplete="off" spellcheck="false">
-      <button type="button" id="btn-items-close" title="Collapse" aria-label="Collapse">&laquo;</button>
-    </div>
-    <div class="side-meta"><span id="items-count" class="dim"></span></div>
-    <p id="items-empty" class="dim" hidden></p>
-    <ul id="items-results" class="items-grid"></ul>
-    <div id="item-detail" class="item-detail" hidden></div>
-    <p class="dim items-credit">Item data and icons come from
-      <a href="https://www.tboi.com/original" target="_blank" rel="noopener noreferrer">tboi.com</a>,
-      fetched at runtime.</p>
-  </aside>
-
-  <div id="side-resize" class="resize-handle" role="separator"
-       aria-orientation="vertical" tabindex="-1" title="Drag to resize"></div>
 
   <main class="frame">
   <div id="stage" class="stage"></div>
@@ -90,6 +73,24 @@
     </div>
   </div>
 </main>
+
+  <div id="side-resize" class="resize-handle" role="separator"
+       aria-orientation="vertical" tabindex="-1" title="Drag to resize"></div>
+
+  <aside id="items-panel" class="sidebar">
+    <div class="side-head">
+      <input id="items-search" type="search" placeholder="Search items&hellip;"
+             autocomplete="off" spellcheck="false">
+      <button type="button" id="btn-items-close" title="Collapse" aria-label="Collapse">&raquo;</button>
+    </div>
+    <div class="side-meta"><span id="items-count" class="dim"></span></div>
+    <p id="items-empty" class="dim" hidden></p>
+    <ul id="items-results" class="items-grid"></ul>
+    <div id="item-detail" class="item-detail" hidden></div>
+    <p class="dim items-credit">Item data and icons come from
+      <a href="https://www.tboi.com/original" target="_blank" rel="noopener noreferrer">tboi.com</a>,
+      fetched at runtime.</p>
+  </aside>
 </div>
 
 <div id="pickup-toast" class="toast" hidden role="status" aria-live="polite">

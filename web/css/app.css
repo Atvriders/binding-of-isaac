@@ -100,7 +100,7 @@ button[aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:#0
 /* ---- item sidebar ---- */
 .sidebar{flex:0 0 auto;width:var(--side-w,320px);min-width:180px;max-width:70vw;
   display:flex;flex-direction:column;gap:8px;min-height:0;
-  background:var(--panel);border-right:1px solid var(--line);padding:10px}
+  background:var(--panel);border-left:1px solid var(--line);padding:10px}
 .sidebar[hidden]{display:none!important}
 body.side-collapsed .resize-handle{display:none}
 .side-head{display:flex;gap:6px;align-items:center}
@@ -112,7 +112,7 @@ body.side-collapsed .resize-handle{display:none}
 #items-search:focus{outline:none;border-color:var(--accent)}
 
 .resize-handle{flex:0 0 6px;cursor:col-resize;background:transparent;
-  border-right:1px solid var(--line)}
+  border-left:1px solid var(--line)}
 .resize-handle:hover,.resize-handle.dragging{background:var(--accent)}
 
 .items-grid{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1 1 auto;
@@ -140,8 +140,8 @@ body.side-collapsed .resize-handle{display:none}
 
 @media (max-width:760px){
   .workspace{flex-direction:column}
-  .sidebar{width:auto;max-width:none;max-height:45vh;border-right:0;
-    border-bottom:1px solid var(--line)}
+  .sidebar{width:auto;max-width:none;max-height:45vh;border-left:0;
+    border-top:1px solid var(--line)}
   .resize-handle{display:none}
 }
 

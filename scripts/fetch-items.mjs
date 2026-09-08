@@ -11,6 +11,10 @@ const SPRITE_OUT = OUT.replace(/items\.json$/, 'item-sprite.png');
 const CSS_URL = process.env.ITEMS_CSS_URL || 'https://www.tboi.com/assets/main.css';
 const URL_ = process.env.ITEMS_URL || SOURCE_URL;
 const MAX_AGE_DAYS = Number(process.env.ITEMS_MAX_AGE_DAYS || 7);
+// Bump when the shape of items.json changes. Cached data from an older image is
+// otherwise kept until it ages out, so an upgrade would not deliver new fields --
+// which is exactly how icons went missing after the sprite support landed.
+const SCHEMA = 2;
 
 const log = (...a) => console.error('[items]', ...a);
 
@@ -21,6 +25,10 @@ function fresh(file) {
     const ageDays = (Date.now() - st.mtimeMs) / 86400000;
     if (ageDays > MAX_AGE_DAYS) return false;
     const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (data.schema !== SCHEMA) {
+      log(`cached list is schema ${data.schema ?? 1}, need ${SCHEMA}; refetching`);
+      return false;
+    }
     return Array.isArray(data.items) && data.items.length > 0;
   } catch { return false; }
 }
@@ -80,7 +88,7 @@ async function main() {
   }
 
   fs.writeFileSync(tmp, JSON.stringify(
-    { source: URL_, fetchedAt: new Date().toISOString(), count: items.length,
+    { schema: SCHEMA, source: URL_, fetchedAt: new Date().toISOString(), count: items.length,
       spriteUrl: fs.existsSync(SPRITE_OUT) ? '/data/item-sprite.png' : null,
       withIcons, items }));
   fs.renameSync(tmp, OUT);

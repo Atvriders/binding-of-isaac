@@ -14,12 +14,43 @@ const TESS_BASE = '/vendor/tesseract';
 // Where the pickup banner is drawn, as fractions of the stage.
 const DEFAULT_BANNER = { x: 0.015, y: 0.76, w: 0.52, h: 0.19 };
 const POLL_MS = 400;
+const VARIANCE_MIN = Number(
+  new URLSearchParams(location.search).get('aidvar') ?? 180);
 const REPEAT_SUPPRESS_MS = 8000;
 
 let running = false;
 let video = null, stream = null, work = null, worker = null;
 let lastSig = null, lastHit = { name: null, at: 0 };
 let listeners = new Set();
+let dbg = null;
+
+/** ?aid=debug shows exactly what the detector samples: the crop, its variance, the
+ *  OCR text and the match. Without this the only symptom is "nothing happened",
+ *  which says nothing about which stage failed. */
+function initDebug() {
+  if (new URLSearchParams(location.search).get('aid') !== 'debug') return null;
+  const box = document.createElement('div');
+  box.id = 'aid-debug';
+  box.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:40;background:#0d0b0a;' +
+    'border:1px solid #b8412f;border-radius:6px;padding:6px;font:11px/1.4 monospace;' +
+    'color:#e8e2dc;max-width:min(460px,46vw)';
+  const cv = document.createElement('canvas');
+  cv.style.cssText = 'display:block;width:100%;image-rendering:pixelated;' +
+    'border:1px solid #2a2521;margin-bottom:4px';
+  const txt = document.createElement('div');
+  txt.textContent = 'Auto-ID debug: waiting for frames…';
+  box.append(cv, txt);
+  document.body.append(box);
+  return { canvas: cv, text: txt };
+}
+
+function debugUpdate(cropCanvas, info) {
+  if (!dbg) return;
+  dbg.canvas.width = cropCanvas.width;
+  dbg.canvas.height = cropCanvas.height;
+  dbg.canvas.getContext('2d').drawImage(cropCanvas, 0, 0);
+  dbg.text.textContent = info;
+}
 
 export function onPickup(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 export function isWatching() { return running; }
@@ -92,7 +123,14 @@ async function tick(items) {
   const changed = !lastSig || sig.hash !== lastSig.hash;
   lastSig = sig;
   // A banner is high-contrast text on a dark plate; an empty floor is flat.
-  if (!changed || sig.variance < 180) return;
+  const gated = !changed || sig.variance < VARIANCE_MIN;
+  if (dbg) {
+    debugUpdate(work, `region ${(r.x*100).toFixed(1)},${(r.y*100).toFixed(1)} ` +
+      `${(r.w*100).toFixed(1)}x${(r.h*100).toFixed(1)}%  ${sw}x${sh}px\n` +
+      `variance ${sig.variance.toFixed(0)} (min ${VARIANCE_MIN})  changed ${changed}` +
+      `  -> ${gated ? 'SKIPPED' : 'running OCR'}`);
+  }
+  if (gated) return;
 
   // Threshold to black-on-white, which is what the OCR engine expects.
   const d = img.data;
@@ -115,6 +153,11 @@ async function tick(items) {
 
   const line = String(text || '').split('\n').map(s => s.trim()).filter(Boolean)[0] || '';
   const hit = bestMatch(line, items);
+  if (dbg) {
+    dbg.text.textContent += `\nOCR read: ${JSON.stringify(line)}\n` +
+      (hit ? `match: ${hit.item.name} (${hit.score.toFixed(2)})`
+           : `no match above threshold (${items.length} candidates)`);
+  }
   if (!hit) return;
 
   const now = Date.now();
@@ -133,6 +176,7 @@ export async function startPickupWatch(player, items) {
     video.muted = true; video.playsInline = true; video.srcObject = stream;
     await video.play();
     work = document.createElement('canvas');
+    dbg = dbg || initDebug();
     running = true;
     lastSig = null;
     (async function loop() {

@@ -587,20 +587,22 @@ test('searching filters the grid and a tile opens its detail', { skip }, async (
   assert.ok(r.detailText.length > 0, 'the detail panel should have content');
 });
 
-test('the sidebar never overlaps the game, at any width', { skip }, async () => {
+test('the game never runs into the sidebar, at any width', { skip }, async () => {
   for (const w of [180, 320, 560, 820]) {
     const r = await page.evaluate(width => {
       document.documentElement.style.setProperty('--side-w', `${width}px`);
       const side = document.getElementById('items-panel').getBoundingClientRect();
       const stage = document.getElementById('stage').getBoundingClientRect();
-      return { sideRight: side.right, stageLeft: stage.left, stageRight: stage.right,
+      return { sideLeft: side.left, sideRight: side.right,
+               stageLeft: stage.left, stageRight: stage.right,
                ratio: +(stage.width / stage.height).toFixed(2),
                viewport: document.documentElement.clientWidth };
     }, w);
-    assert.ok(r.sideRight <= r.stageLeft + 1,
-      `at ${w}px the sidebar (right ${r.sideRight}) overlaps the stage (left ${r.stageLeft})`);
-    assert.ok(r.stageRight <= r.viewport + 1,
-      `at ${w}px the stage overflows the viewport (${r.stageRight} > ${r.viewport})`);
+    // The sidebar sits to the RIGHT of the game, so the game must end before it starts.
+    assert.ok(r.stageRight <= r.sideLeft + 1,
+      `at ${w}px the game (right ${r.stageRight}) runs into the sidebar (left ${r.sideLeft})`);
+    assert.ok(r.sideRight <= r.viewport + 1,
+      `at ${w}px the sidebar overflows the viewport (${r.sideRight} > ${r.viewport})`);
     assert.ok(Math.abs(r.ratio - 1.33) < 0.05,
       `at ${w}px the stage lost its 4:3 ratio (${r.ratio})`);
   }
@@ -724,4 +726,40 @@ test('a missing item list degrades to a message, not a broken page', { skip }, a
       'and reassure that the game still works');
     assert.equal(state.playing, true, 'the game must keep working regardless');
   } finally { await p2.close(); }
+});
+
+test('the CSP allows the blob worker the OCR engine needs', { skip }, async () => {
+  // tesseract.js spawns its worker from a blob: URL. worker-src falls back to
+  // script-src, which does not allow blob:, so without an explicit worker-src the
+  // engine is killed at birth -- Auto-ID reports "on" and silently never runs.
+  // This shipped, because the CSP test only ever exercised the base page.
+  const r = await page.evaluate(async () => {
+    try {
+      const url = URL.createObjectURL(
+        new Blob(['self.onmessage=()=>postMessage(1)'], { type: 'text/javascript' }));
+      const w = new Worker(url);
+      const ok = await new Promise(res => {
+        w.onmessage = () => res(true);
+        w.onerror = () => res(false);
+        w.postMessage(0);
+        setTimeout(() => res(false), 4000);
+      });
+      w.terminate();
+      URL.revokeObjectURL(url);
+      return ok;
+    } catch (e) { return `threw: ${e.message || e}`; }
+  });
+  assert.equal(r, true,
+    'a blob worker was refused; the OCR engine cannot start under this policy');
+
+  const violations = await page.evaluate(() => (window.__csp || []).slice());
+  const workerViolations = violations.filter(v => /worker|script-src/i.test(v));
+  assert.deepEqual(workerViolations, [],
+    `the policy blocked something the page needs: ${workerViolations.join(', ')}`);
+});
+
+test('the nginx policy declares worker-src explicitly', () => {
+  const conf = nginxCsp() || '';
+  assert.match(conf, /worker-src[^;]*blob:/,
+    'worker-src must permit blob: or the OCR worker is refused at runtime');
 });

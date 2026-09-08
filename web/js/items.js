@@ -182,7 +182,8 @@ function initResize() {
   });
   handle.addEventListener('pointermove', e => {
     if (!dragging) return;
-    const w = apply(e.clientX - els.panel.getBoundingClientRect().left);
+    // The sidebar is on the right, so its width grows as the pointer moves left.
+    const w = apply(window.innerWidth - e.clientX);
     try { localStorage.setItem(WIDTH_KEY, String(w)); } catch { /* fine */ }
   });
   const stop = () => {
