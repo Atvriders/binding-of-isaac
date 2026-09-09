@@ -22,7 +22,14 @@ const TESS_BASE = '/vendor/tesseract-5';
 // Measured against real pickups: the HUD's black bar ends at ~16.7% of stage
 // height and the banner name sits just under it. Starting higher pulled the HUD's
 // counters into the crop, and OCR read those instead of the item name.
-const DEFAULT_BANNER = { x: 0.06, y: 0.165, w: 0.46, h: 0.11 };
+// The longest item name is 23 characters, which projects to about 36% of stage
+// width, so 46% is ample. Widened a little anyway as cheap insurance.
+const DEFAULT_BANNER = { x: 0.05, y: 0.16, w: 0.60, h: 0.075 };
+// The banner slides in from the left, so the first frame that trips the change gate
+// often holds a half-arrived name. Read a few frames and keep the best match rather
+// than trusting whichever frame happened to fire.
+const SETTLE_FRAMES = 4;
+const SETTLE_GAP_MS = 260;
 const POLL_MS = 400;
 const VARIANCE_MIN = Number(
   new URLSearchParams(location.search).get('aidvar') ?? 180);
@@ -118,61 +125,78 @@ function signature(data) {
   return { hash, variance: sq / n - mean * mean };
 }
 
-async function tick(items) {
-  if (!running || !video || video.readyState < 2) return;
-  const r = bannerRegion();
+/** Draw the banner crop into `work`. Returns its raw signature, or null. */
+function prepareCrop(region) {
+  if (!video || video.readyState < 2 || !work) return null;
   const vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw || !vh) return;
-
-  const sx = Math.floor(vw * r.x), sy = Math.floor(vh * r.y);
-  const sw = Math.floor(vw * r.w), sh = Math.floor(vh * r.h);
+  if (!vw || !vh) return null;
+  const sx = Math.floor(vw * region.x), sy = Math.floor(vh * region.y);
+  const sw = Math.floor(vw * region.w), sh = Math.floor(vh * region.h);
   work.width = sw; work.height = sh;
   const ctx = work.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
   const img = ctx.getImageData(0, 0, sw, sh);
+  return { img, ctx, sig: signature(img.data), sw, sh };
+}
 
-  const sig = signature(img.data);
-  const changed = !lastSig || sig.hash !== lastSig.hash;
-  lastSig = sig;
-  // A banner is high-contrast text on a dark plate; an empty floor is flat.
-  const gated = !changed || sig.variance < VARIANCE_MIN;
-  if (dbg) {
-    debugUpdate(work, `region ${(r.x*100).toFixed(1)},${(r.y*100).toFixed(1)} ` +
-      `${(r.w*100).toFixed(1)}x${(r.h*100).toFixed(1)}%  ${sw}x${sh}px\n` +
-      `variance ${sig.variance.toFixed(0)} (min ${VARIANCE_MIN})  changed ${changed}` +
-      `  -> ${gated ? 'SKIPPED' : 'running OCR'}`);
-  }
-  if (gated) return;
-
-  // Threshold to black-on-white, which is what the OCR engine expects.
+/** Banner text is light on a dark plate; invert to the black-on-white OCR expects. */
+function threshold(ctx, img) {
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
     const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-    const v = lum > 110 ? 0 : 255;      // banner text is light on dark, so invert
+    const v = lum > 110 ? 0 : 255;
     d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
+}
 
-  let text = '';
-  try {
-    const w = await getWorker();
-    ({ data: { text } } = await w.recognize(work));
-  } catch (e) {
-    stopPickupWatch();
-    listeners.forEach(fn => fn({ error: String(e.message || e) }));
-    return;
-  }
+async function tick(items) {
+  if (!running) return;
+  const region = bannerRegion();
+  const first = prepareCrop(region);
+  if (!first) return;
 
-  // Match every line and keep the best: the banner name may not be the first line.
-  const lines = String(text || '').split('\n').map(s => s.trim()).filter(Boolean);
-  let hit = null;
-  for (const l of lines) {
-    const h = bestMatch(l, items);
-    if (h && (!hit || h.score > hit.score)) hit = h;
-  }
-  const line = lines.join(' | ');
+  const changed = !lastSig || first.sig.hash !== lastSig.hash;
+  lastSig = first.sig;
+  // A banner is high-contrast text on a dark plate; an empty floor is flat.
+  const gated = !changed || first.sig.variance < VARIANCE_MIN;
   if (dbg) {
-    dbg.text.textContent += `\nOCR read: ${JSON.stringify(line)}\n` +
+    debugUpdate(work, `region ${(region.x * 100).toFixed(1)},${(region.y * 100).toFixed(1)} ` +
+      `${(region.w * 100).toFixed(1)}x${(region.h * 100).toFixed(1)}%  ${first.sw}x${first.sh}px\n` +
+      `variance ${first.sig.variance.toFixed(0)} (min ${VARIANCE_MIN})  changed ${changed}` +
+      `  -> ${gated ? 'SKIPPED' : 'running OCR'}`);
+  }
+  if (gated) return;
+  threshold(first.ctx, first.img);
+
+  // The banner slides in, so the frame that trips the gate often holds a
+  // half-arrived name. Read a few frames and keep the best match.
+  let hit = null, bestLine = '';
+  for (let attempt = 0; attempt < SETTLE_FRAMES; attempt++) {
+    if (attempt > 0) {
+      await new Promise(res => setTimeout(res, SETTLE_GAP_MS));
+      const next = prepareCrop(region);
+      if (!next) break;
+      threshold(next.ctx, next.img);
+    }
+    let text = '';
+    try {
+      const worker = await getWorker();
+      ({ data: { text } } = await worker.recognize(work));
+    } catch (e) {
+      stopPickupWatch();
+      listeners.forEach(fn => fn({ error: String(e.message || e) }));
+      return;
+    }
+    for (const l of String(text || '').split('\n').map(t => t.trim()).filter(Boolean)) {
+      const h = bestMatch(l, items);
+      if (h && (!hit || h.score > hit.score)) { hit = h; bestLine = l; }
+    }
+    if (hit && hit.score > 0.95) break;   // an exact read needs no further frames
+  }
+
+  if (dbg) {
+    dbg.text.textContent += `\nOCR read: ${JSON.stringify(bestLine)}\n` +
       (hit ? `match: ${hit.item.name} (${hit.score.toFixed(2)})`
            : `no match above threshold (${items.length} candidates)`);
   }
@@ -181,7 +205,7 @@ async function tick(items) {
   const now = Date.now();
   if (hit.item.name === lastHit.name && now - lastHit.at < REPEAT_SUPPRESS_MS) return;
   lastHit = { name: hit.item.name, at: now };
-  listeners.forEach(fn => fn({ item: hit.item, score: hit.score, read: line }));
+  listeners.forEach(fn => fn({ item: hit.item, score: hit.score, read: bestLine }));
 }
 
 export async function startPickupWatch(player, items) {
