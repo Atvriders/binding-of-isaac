@@ -193,3 +193,18 @@ test('the image ships no scraped item data', () => {
   assert.ok(!/COPY\s+data\//.test(df), 'no item data may be copied into the image');
   assert.match(df, /fetch-items\.mjs/, 'the fetcher must ship so it can run at start');
 });
+
+test('every OCR core variant is vendored, not just the ones I guessed', () => {
+  // tesseract.js selects a core at runtime by SIMD support. Shipping a subset means
+  // importScripts 404s inside the worker and the engine never starts -- which is
+  // exactly how Auto-ID shipped dead.
+  const df = read('Dockerfile');
+  const sh = read('scripts/fetch-assets.sh');
+  for (const src of [df, sh]) {
+    assert.match(src, /-simd-lstm/, 'the SIMD+LSTM core must be vendored');
+    assert.match(src, /"" "-simd" "-lstm" "-simd-lstm"/,
+      'all four core variants must be vendored');
+    assert.match(src, /wasm\.js wasm|wasm.js" "wasm|ext in wasm/,
+      'each core needs its .wasm binary as well as the .wasm.js wrapper');
+  }
+});

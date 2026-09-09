@@ -24,9 +24,16 @@ RUN set -eux; \
       "$base/tesseract.js@${TESSERACT_JS_VERSION}/dist/tesseract.min.js"; \
     curl -fsSL --retry 3 -o /out/tesseract/worker.min.js \
       "$base/tesseract.js@${TESSERACT_JS_VERSION}/dist/worker.min.js"; \
-    for f in tesseract-core-simd.wasm.js tesseract-core.wasm.js; do \
-      curl -fsSL --retry 3 -o "/out/tesseract/core/$f" \
-        "$base/tesseract.js-core@${TESSERACT_CORE_VERSION}/$f"; \
+    # All four cores, each with its .wasm binary. tesseract.js picks one at runtime
+    # based on the browser's SIMD support; vendoring a subset means a 404 inside the
+    # worker and an engine that never starts.
+    for v in "" "-simd" "-lstm" "-simd-lstm"; do \
+      for ext in wasm.js wasm; do \
+        f="tesseract-core${v}.${ext}"; \
+        curl -fsSL --retry 3 -o "/out/tesseract/core/$f" \
+          "$base/tesseract.js-core@${TESSERACT_CORE_VERSION}/$f"; \
+        test -s "/out/tesseract/core/$f"; \
+      done; \
     done; \
     curl -fsSL --retry 3 -o /out/tesseract/eng.traineddata.gz \
       "https://tessdata.projectnaptha.com/4.0.0/eng.traineddata.gz"; \

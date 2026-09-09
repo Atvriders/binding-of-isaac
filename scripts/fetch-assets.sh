@@ -49,9 +49,12 @@ if [ ! -f web/vendor/tesseract/tesseract.min.js ]; then
     "https://unpkg.com/tesseract.js@${TJS}/dist/tesseract.min.js" || true
   curl -fsSL --retry 3 -o web/vendor/tesseract/worker.min.js \
     "https://unpkg.com/tesseract.js@${TJS}/dist/worker.min.js" || true
-  for f in tesseract-core-simd.wasm.js tesseract-core.wasm.js; do
-    curl -fsSL --retry 3 -o "web/vendor/tesseract/core/$f" \
-      "https://unpkg.com/tesseract.js-core@${TCORE}/$f" || true
+  for v in "" "-simd" "-lstm" "-simd-lstm"; do
+    for ext in wasm.js wasm; do
+      f="tesseract-core${v}.${ext}"
+      curl -fsSL --retry 3 -o "web/vendor/tesseract/core/$f" \
+        "https://unpkg.com/tesseract.js-core@${TCORE}/$f" || true
+    done
   done
   curl -fsSL --retry 3 -o web/vendor/tesseract/eng.traineddata.gz \
     "https://tessdata.projectnaptha.com/4.0.0/eng.traineddata.gz" || true

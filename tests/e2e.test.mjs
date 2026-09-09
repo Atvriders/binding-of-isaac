@@ -15,6 +15,8 @@ const DATA = path.join(REPO, 'data');
 
 const ready = fs.existsSync(path.join(RUFFLE, 'ruffle.js'))
            && fs.existsSync(path.join(GAME, 'isaac.swf'));
+const OCR_DIR = path.join(WEB, 'vendor', 'tesseract');
+const ocrReady = fs.existsSync(path.join(OCR_DIR, 'tesseract.min.js'));
 
 let srv, browser, page;
 const pageErrors = [];
@@ -35,7 +37,9 @@ before(async () => {
     document.addEventListener('securitypolicyviolation',
       e => window.__csp.push(`${e.violatedDirective} blocked ${e.blockedURI}`));
   });
-  await page.goto(`${srv.url}/?renderer=canvas&touch=1`, { waitUntil: 'load' });
+  // No renderer override: the canvas backend cannot do BitmapData.draw, so the game
+  // freezes in a real room. The suite must exercise the renderer users actually get.
+  await page.goto(`${srv.url}/?touch=1`, { waitUntil: 'load' });
 });
 
 after(async () => {
@@ -516,8 +520,11 @@ test('the default renderer can actually draw room graphics', { skip }, async () 
   // The regression this exists for: pinning preferredRenderer to 'webgl' selected a
   // backend with no offscreen rendering, so BitmapData.draw failed and every floor,
   // wall and rock went undrawn -- while still colliding. The game looked like flat
-  // brown boxes with invisible walls, and no test noticed because the rest of the
-  // suite runs on ?renderer=canvas so that pixels can be read back.
+  // brown boxes with invisible walls, and no test noticed because the whole suite
+  // used to force ?renderer=canvas so drawImage could read pixels back. That backend
+  // also cannot do BitmapData.draw, so it froze the game in real rooms and the input
+  // tests only passed by luck of which room was generated. Sampling now goes through
+  // composited screenshots, so the suite runs the renderer users actually get.
   const p2 = await browser.newPage({ viewport: { width: 1000, height: 800 } });
   const backendErrors = [];
   p2.on('console', m => {
@@ -704,7 +711,7 @@ test('a missing item list degrades to a message, not a broken page', { skip }, a
   const p2 = await browser.newPage({ viewport: { width: 1000, height: 800 } });
   try {
     await p2.route('**/data/items.json', route => route.fulfill({ status: 404, body: 'nope' }));
-    await p2.goto(`${srv.url}/?renderer=canvas`, { waitUntil: 'load' });
+    await p2.goto(srv.url, { waitUntil: 'load' });
     await p2.waitForFunction(() => window.__player?.metadata != null, { timeout: 120000 });
     // The sidebar is visible by default, and its collapsed state persists in
     // localStorage across pages of the same origin -- so expand it explicitly
@@ -762,4 +769,54 @@ test('the nginx policy declares worker-src explicitly', () => {
   const conf = nginxCsp() || '';
   assert.match(conf, /worker-src[^;]*blob:/,
     'worker-src must permit blob: or the OCR worker is refused at runtime');
+});
+
+test('the OCR engine actually reads text with the vendored assets', {
+  skip: skip || (ocrReady ? false : 'run scripts/fetch-assets.sh for the OCR engine'),
+}, async () => {
+  // Auto-ID shipped broken twice because this was never tested: first the CSP
+  // refused the blob worker, then the worker 404'd on a core variant that was
+  // never vendored. Checking that the files are *reachable* proved neither.
+  // This runs the real engine, under the real policy, through to a match.
+  const r = await page.evaluate(async () => {
+    const c = document.createElement('canvas');
+    c.width = 520; c.height = 90;
+    const x = c.getContext('2d');
+    x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height);
+    x.fillStyle = '#fff'; x.font = 'bold 46px monospace';
+    x.fillText('The Sad Onion', 12, 60);
+
+    if (!window.Tesseract) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = '/vendor/tesseract/tesseract.min.js';
+        s.onload = res; s.onerror = () => rej(new Error('tesseract.min.js failed to load'));
+        document.head.append(s);
+      });
+    }
+    try {
+      const worker = await window.Tesseract.createWorker('eng', 1, {
+        workerPath: '/vendor/tesseract/worker.min.js',
+        corePath: '/vendor/tesseract/core',
+        langPath: '/vendor/tesseract',
+        gzip: true,
+        logger: () => {},
+      });
+      await worker.setParameters({
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' -",
+        tessedit_pageseg_mode: '7',
+      });
+      const { data: { text } } = await worker.recognize(c);
+      await worker.terminate();
+      const m = await import('/js/match.js');
+      const data = await (await fetch('/data/items.json')).json();
+      const hit = m.bestMatch(text.trim(), data.items);
+      return { ok: true, read: text.trim(), match: hit?.item?.name ?? null };
+    } catch (e) {
+      return { ok: false, error: String(e.message || e) };
+    }
+  });
+  assert.equal(r.ok, true, `the OCR engine failed to start: ${r.error}`);
+  assert.equal(r.match, 'The Sad Onion',
+    `read ${JSON.stringify(r.read)} which resolved to ${r.match}`);
 });
