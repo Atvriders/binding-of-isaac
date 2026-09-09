@@ -162,6 +162,20 @@ async function main() {
   // silently swallows every keypress until the user happens to click on it.
   player.addEventListener('loadedmetadata', () => ensureFocus(), { once: true });
   stage.addEventListener('pointerdown', ensureFocus);
+
+  // A browser withholds keyboard focus from the page until the user interacts with
+  // it, so focusing the player programmatically on load is not enough: the first
+  // real click is what hands the document focus. Take any click outside the sidebar
+  // as that cue, rather than only a click on the game or the Items button.
+  document.addEventListener('pointerdown', e => {
+    if (e.target.closest('#items-panel, .bar')) return;   // those own their own focus
+    setTimeout(() => { if (!hasKeyboard()) ensureFocus(); }, 0);
+  }, true);
+
+  // Returning to the tab should hand the game the keyboard back too.
+  window.addEventListener('focus', () => {
+    setTimeout(() => { if (!hasKeyboard()) ensureFocus(); }, 0);
+  });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) ensureFocus();
   });

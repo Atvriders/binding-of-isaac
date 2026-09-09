@@ -823,3 +823,24 @@ test('the OCR engine actually reads text with the vendored assets', {
   assert.equal(r.match, 'The Sad Onion',
     `read ${JSON.stringify(r.read)} which resolved to ${r.match}`);
 });
+
+test('clicking anywhere outside the sidebar gives the game the keyboard', { skip },
+  async () => {
+  // A browser withholds keyboard focus until the user interacts with the page, so
+  // controls appeared dead on load until something was clicked. Any click outside
+  // the sidebar should hand focus to the game, not just the Items toggle.
+  await page.evaluate(() => document.getElementById('items-search').focus());
+  await page.waitForTimeout(150);
+  assert.notEqual(await page.evaluate(() => document.activeElement === window.__player),
+                  true, 'precondition: focus should be off the game');
+
+  // Click the empty area beside the stage, not the game and not the sidebar.
+  const box = await page.evaluate(() => {
+    const r = document.getElementById('stage').getBoundingClientRect();
+    return { x: Math.max(2, r.left / 2), y: r.top + r.height / 2 };
+  });
+  await page.mouse.click(box.x, box.y);
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => document.activeElement === window.__player),
+               true, 'a click outside the sidebar must focus the game');
+});
