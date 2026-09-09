@@ -11,7 +11,6 @@ const WIDTH_KEY = 'cabinet:sidebar-width';
 const COLLAPSED_KEY = 'cabinet:sidebar-collapsed';
 
 let items = [];
-let sprite = null;
 let loadError = null;
 let selected = null;
 let els = null;
@@ -29,14 +28,13 @@ export async function loadItems() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     items = Array.isArray(data.items) ? data.items : [];
-    sprite = data.spriteUrl || null;
     if (items.length === 0) throw new Error('list was empty');
     loadError = null;
   } catch (e) {
-    items = []; sprite = null;
+    items = [];
     loadError = String(e.message || e);
   }
-  return { count: items.length, error: loadError, sprite };
+  return { count: items.length, error: loadError };
 }
 
 function showDetail(item) {
@@ -71,13 +69,14 @@ function tileFor(item) {
   btn.title = item.name;
 
   const icon = document.createElement('div');
-  if (item.icon && sprite) {
-    // One horizontal strip of variable-width cells; scale each cell to fit the tile.
+  if (item.icon?.sheet) {
+    // Each icon is a cell in its family's strip -- items, trinkets and cards each
+    // have their own sheet, so the URL comes from the item rather than a global.
     const scale = Math.min(32 / item.icon.w, 32 / item.icon.h);
     icon.className = 'tile-icon';
     icon.style.width = `${item.icon.w}px`;
     icon.style.height = `${item.icon.h}px`;
-    icon.style.backgroundImage = `url("${sprite}")`;
+    icon.style.backgroundImage = `url("${item.icon.sheet}")`;
     icon.style.backgroundPosition = `-${item.icon.x}px -${item.icon.y}px`;
     icon.style.transform = `scale(${scale.toFixed(3)})`;
   } else {

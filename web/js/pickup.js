@@ -19,7 +19,10 @@ const TESS_BASE = '/vendor/tesseract-5';
 // item icon in a circle, then the name in caps. The earlier value pointed at the
 // bottom left, which is the floor label, so this was reading wall texture. The x
 // offset skips the circular icon so OCR sees only the name.
-const DEFAULT_BANNER = { x: 0.06, y: 0.11, w: 0.46, h: 0.16 };
+// Measured against real pickups: the HUD's black bar ends at ~16.7% of stage
+// height and the banner name sits just under it. Starting higher pulled the HUD's
+// counters into the crop, and OCR read those instead of the item name.
+const DEFAULT_BANNER = { x: 0.06, y: 0.165, w: 0.46, h: 0.11 };
 const POLL_MS = 400;
 const VARIANCE_MIN = Number(
   new URLSearchParams(location.search).get('aidvar') ?? 180);
@@ -95,7 +98,9 @@ gzip: true,
   // The banner is upper-case words; constraining the charset sharpens the read.
   await worker.setParameters({
     tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' -",
-    tessedit_pageseg_mode: '7',        // treat the crop as a single text line
+    // A block, not a single line: if anything else strays into the crop, we get it
+    // as a separate line and can match each one instead of one merged mess.
+    tessedit_pageseg_mode: '6',
   });
   return worker;
 }
@@ -158,8 +163,14 @@ async function tick(items) {
     return;
   }
 
-  const line = String(text || '').split('\n').map(s => s.trim()).filter(Boolean)[0] || '';
-  const hit = bestMatch(line, items);
+  // Match every line and keep the best: the banner name may not be the first line.
+  const lines = String(text || '').split('\n').map(s => s.trim()).filter(Boolean);
+  let hit = null;
+  for (const l of lines) {
+    const h = bestMatch(l, items);
+    if (h && (!hit || h.score > hit.score)) hit = h;
+  }
+  const line = lines.join(' | ');
   if (dbg) {
     dbg.text.textContent += `\nOCR read: ${JSON.stringify(line)}\n` +
       (hit ? `match: ${hit.item.name} (${hit.score.toFixed(2)})`

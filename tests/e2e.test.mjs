@@ -570,7 +570,10 @@ test('the sidebar lists every item as a grid tile', { skip }, async () => {
   });
   assert.equal(g.visible, true, 'the sidebar should be visible by default');
   assert.ok(g.tiles > 200, `expected the whole list, got ${g.tiles} tiles (${g.count})`);
-  assert.ok(g.withIcon > 150, `expected most tiles to carry an icon, got ${g.withIcon}`);
+  // Items, trinkets and cards each have their own sprite sheet; handling only the
+  // item sheet left every trinket and card as a bare "#id" tile.
+  assert.equal(g.withIcon, g.tiles,
+    `every tile should carry an icon, got ${g.withIcon} of ${g.tiles}`);
 });
 
 test('searching filters the grid and a tile opens its detail', { skip }, async () => {

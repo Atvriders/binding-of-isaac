@@ -34,8 +34,18 @@ export function parseItems(html) {
     if (!name || seen.has(name.toLowerCase())) continue;
     seen.add(name.toLowerCase());
 
-    // The icon is a cell in a horizontal sprite strip, addressed by an itmN class.
-    const spriteRaw = /class=['"][^'"]*\bitm(\d+)\b[^'"]*['"]/.exec(body);
+    // Icons live in three horizontal strips, one per family: passive items (itmN),
+    // trinkets (junxxN) and cards (cardN, plus a few named suits). Only handling
+    // itmN left 61 entries -- every trinket and card -- with no icon at all.
+    let sprite = null;
+    for (const [family, re] of [
+      ['item', /class=['"][^'"]*\bitm(\d+)\b[^'"]*['"]/],
+      ['trinket', /class=['"][^'"]*\bjunxx(\d+)\b[^'"]*['"]/],
+      ['card', /class=['"][^'"]*\bcard([a-z0-9]+)\b[^'"]*['"]/],
+    ]) {
+      const m = re.exec(body);
+      if (m) { sprite = { family, key: m[1] }; break; }
+    }
 
     const idRaw = /<p class="itemid">([\s\S]*?)<\/p>/.exec(body);
     const idNum = idRaw ? /(\d+)/.exec(decode(idRaw[1])) : null;
@@ -51,7 +61,7 @@ export function parseItems(html) {
       sid,
       name,
       description,
-      sprite: spriteRaw ? Number(spriteRaw[1]) : null,
+      sprite,
       url: `${SOURCE}#${tid}`,
     });
   }
@@ -61,25 +71,54 @@ export function parseItems(html) {
 export const SOURCE_URL = SOURCE;
 
 /**
- * Sprite geometry from the stylesheet.
+ * Sprite geometry from the stylesheet, for all three icon families.
  *
- * The strip is one row of variable-width cells: `.itmN{background-position:-X 0;
- * width:Wpx}`, with the row height on `.item`. Returns { cells: {N: {x, w}}, height }.
+ * Each family is one row of cells addressed by a class, with the sheet URL and row
+ * height on a family rule. Cards carry their width on the family rule rather than
+ * per cell, so a per-cell width is optional.
+ *
+ * Returns { families: { item|trinket|card: { image, height, width, cells } } }.
  */
+const FAMILIES = [
+  { key: 'item', cellRe: /\.itm(\d+)\s*\{([^}]*)\}/g, baseRe: /\.vitem\s*\{([^}]*)\}/ },
+  { key: 'trinket', cellRe: /\.junxx(\d+)\s*\{([^}]*)\}/g,
+    baseRe: /\.vanillatrinket\s*\{([^}]*)\}/ },
+  { key: 'card', cellRe: /\.card([a-z0-9]+)\s*\{([^}]*)\}/g,
+    baseRe: /\.vanillacard\s*\{([^}]*)\}/ },
+];
+
 export function parseSpriteRules(css) {
-  if (typeof css !== 'string' || !css) return { cells: {}, height: 50, image: null };
+  const out = { families: {} };
+  if (typeof css !== 'string' || !css) return out;
 
-  const cells = {};
-  for (const m of css.matchAll(/\.itm(\d+)\s*\{([^}]*)\}/g)) {
-    const body = m[2];
-    const pos = /background-position\s*:\s*(-?\d+)px\s+(-?\d+)px?/.exec(body)
-             || /background-position\s*:\s*(-?\d+)(?:px)?\s+(-?\d+)(?:px)?/.exec(body);
-    const w = /width\s*:\s*(\d+)px/.exec(body);
-    if (!pos || !w) continue;
-    cells[m[1]] = { x: Math.abs(Number(pos[1])), y: Math.abs(Number(pos[2])), w: Number(w[1]) };
+  const px = (body, prop) => {
+    const m = new RegExp(prop + '\\s*:\\s*(\\d+)px').exec(body);
+    return m ? Number(m[1]) : null;
+  };
+
+  for (const fam of FAMILIES) {
+    const base = fam.baseRe.exec(css);
+    if (!base) continue;
+    const baseBody = base[1];
+    const img = /url\(\s*['"]?([^'")]+)['"]?\s*\)/.exec(baseBody);
+
+    const cells = {};
+    for (const m of css.matchAll(fam.cellRe)) {
+      const body = m[2];
+      const pos = /background-position\s*:\s*(-?\d+)(?:px)?\s+(-?\d+)(?:px)?/.exec(body);
+      if (!pos) continue;
+      cells[m[1]] = {
+        x: Math.abs(Number(pos[1])),
+        y: Math.abs(Number(pos[2])),
+        w: px(body, 'width'),      // may be null; the family width then applies
+      };
+    }
+    out.families[fam.key] = {
+      image: img ? img[1] : null,
+      height: px(baseBody, 'height') ?? 50,
+      width: px(baseBody, 'width'),
+      cells,
+    };
   }
-
-  const h = /\.item\s*\{[^}]*height\s*:\s*(\d+)px/.exec(css);
-  const img = /\.vitem\s*\{[^}]*url\(\s*['"]?([^'")]+)['"]?\s*\)/.exec(css);
-  return { cells, height: h ? Number(h[1]) : 50, image: img ? img[1] : null };
+  return out;
 }
