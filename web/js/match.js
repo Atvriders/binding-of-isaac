@@ -58,13 +58,32 @@ export function similarity(a, b) {
  * @returns {{item, score}|null} null when nothing clears `threshold`.
  */
 export function bestMatch(text, items, { threshold = 0.62 } = {}) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  // Exact text match first, so genuinely short names like "<3" stay identifiable.
+  // They cannot go through the fuzzy path: punctuation-stripping leaves one letter,
+  // which would match almost any garbled read.
+  const plain = normalisePlain(text);
+  if (plain) {
+    for (const item of items) {
+      if (normalisePlain(item.name) === plain) return { item, score: 1 };
+    }
+  }
+
   const q = normalise(text);
-  if (q.length < 3 || !Array.isArray(items) || items.length === 0) return null;
+  if (q.length < 3) return null;
 
   let best = null;
   for (const item of items) {
     const n = normalise(item.name);
     if (!n) continue;
+    // Very short names are false-positive magnets: "<3" strips to "3", which the
+    // OCR folding turns into "e", and a single letter fuzzy-matches almost any
+    // garbled read. Such names must match exactly or not at all.
+    if (n.length < 3) {
+      if (n === q) { best = { item, score: 1 }; break; }
+      continue;
+    }
     // A clean substring hit is worth more than raw edit distance: OCR often clips
     // the leading or trailing character of a banner.
     let score = similarity(q, n);

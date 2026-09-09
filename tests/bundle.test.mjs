@@ -208,3 +208,49 @@ test('every OCR core variant is vendored, not just the ones I guessed', () => {
       'each core needs its .wasm binary as well as the .wasm.js wrapper');
   }
 });
+
+test('long-lived cache headers never apply to error responses', () => {
+  // `always` sends a header regardless of status. On a long max-age that lets a
+  // transient 404 be cached by a CDN for the full duration -- a missing asset was
+  // pinned as 404 for an hour after it existed again, making a good deploy look broken.
+  const conf = read('nginx/default.conf');
+  const offenders = [...conf.matchAll(/add_header\s+Cache-Control\s+"([^"]*)"\s*always\s*;/g)]
+    .map(m => m[1])
+    .filter(v => /max-age=(\d+)/.test(v) && Number(/max-age=(\d+)/.exec(v)[1]) > 60);
+  assert.deepEqual(offenders, [],
+    `these cache directives use "always" with a long max-age: ${offenders.join(' | ')}`);
+});
+
+test('the OCR asset path matches everywhere it is declared', () => {
+  // Three places must agree: where the image puts the files, where the dev script
+  // puts them, and where the browser asks for them. A mismatch is a 404 inside the
+  // worker, which surfaces only as "Auto-ID: unavailable".
+  const path_of = src => {
+    const m = /\/vendor\/(tesseract[a-z0-9.-]*)/.exec(src) || /vendor\/(tesseract[a-z0-9.-]*)/.exec(src);
+    return m ? m[1] : null;
+  };
+  const inImage = path_of(read('Dockerfile'));
+  const inScript = path_of(read('scripts/fetch-assets.sh'));
+  const inBrowser = path_of(read('web/js/pickup.js'));
+  assert.ok(inImage, 'the Dockerfile must place the OCR assets somewhere');
+  assert.equal(inScript, inImage, 'dev script and image disagree on the OCR path');
+  assert.equal(inBrowser, inImage, 'the browser asks for a different OCR path than is shipped');
+});
+
+test('the OCR asset path is versioned', () => {
+  // An unversioned path cannot recover from a CDN that cached a 404 against it.
+  assert.match(read('web/js/pickup.js'), /\/vendor\/tesseract-\d/,
+    'version the path so a poisoned cache entry cannot be hit again');
+});
+
+test('the pickup banner region points at the top of the screen', () => {
+  // The banner is drawn under the HUD at the top left. The original value pointed at
+  // the bottom left, which is the floor label, so the detector read wall texture.
+  const src = read('web/js/pickup.js');
+  const m = /DEFAULT_BANNER = \{ x: ([\d.]+), y: ([\d.]+), w: ([\d.]+), h: ([\d.]+) \}/.exec(src);
+  assert.ok(m, 'the default banner region must be declared');
+  const [, x, y, w, h] = m.map(Number);
+  assert.ok(y < 0.4, `the banner is near the top; y=${y} points at the lower screen`);
+  assert.ok(y + h < 0.5, `the region must stay in the upper half (y+h=${(y + h).toFixed(2)})`);
+  assert.ok(x < 0.2 && w > 0.2, `the banner starts at the left and needs width (x=${x}, w=${w})`);
+});

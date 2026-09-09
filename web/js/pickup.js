@@ -10,9 +10,16 @@
 // anything that does not clear the threshold reports nothing.
 import { bestMatch } from './match.js';
 
-const TESS_BASE = '/vendor/tesseract';
+// Versioned path. A CDN that cached a 404 for the unversioned path would otherwise
+// keep serving it for the life of the cache entry, long after the file existed.
+const TESS_BASE = '/vendor/tesseract-5';
 // Where the pickup banner is drawn, as fractions of the stage.
-const DEFAULT_BANNER = { x: 0.015, y: 0.76, w: 0.52, h: 0.19 };
+//
+// Measured from real pickups: the banner sits under the HUD at the TOP left -- the
+// item icon in a circle, then the name in caps. The earlier value pointed at the
+// bottom left, which is the floor label, so this was reading wall texture. The x
+// offset skips the circular icon so OCR sees only the name.
+const DEFAULT_BANNER = { x: 0.06, y: 0.11, w: 0.46, h: 0.16 };
 const POLL_MS = 400;
 const VARIANCE_MIN = Number(
   new URLSearchParams(location.search).get('aidvar') ?? 180);

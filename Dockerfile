@@ -52,7 +52,7 @@ LABEL org.opencontainers.image.title="Isaac Cabinet" \
 RUN apk add --no-cache curl nodejs
 
 COPY --from=ruffle /out/ruffle /usr/share/nginx/html/ruffle
-COPY --from=ocr /out/tesseract /usr/share/nginx/html/vendor/tesseract
+COPY --from=ocr /out/tesseract /usr/share/nginx/html/vendor/tesseract-5
 COPY web/ /usr/share/nginx/html/
 COPY scripts/parse-items.mjs scripts/fetch-items.mjs /usr/local/lib/isaac/
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf

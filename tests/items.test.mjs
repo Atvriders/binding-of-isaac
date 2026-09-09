@@ -108,3 +108,37 @@ test('normalisation folds OCR confusions only where it should', () => {
 test('an empty search returns the whole list', () => {
   assert.equal(search('', ITEMS).length, 3);
 });
+
+// Regressions from a real pickup: the detector locked onto "<3" and never moved,
+// and it was reading the wrong part of the screen entirely.
+const SHORT = [
+  { id: 15, name: '<3' },
+  { id: 1, name: 'The Sad Onion' },
+  { id: 2, name: 'Goat Hoof' },
+  { id: 3, name: 'Toothpicks' },
+];
+
+test('a two-character name is not a magnet for garbled reads', () => {
+  // "<3" strips to "3", which OCR-folding turns into "e" -- a single letter that
+  // fuzzy-matches almost anything. It locked on and every later pickup kept showing it.
+  for (const noise of ['wall texture noise', 'cellar i', '   e  ', 'rrrmee', 'xxeexx',
+                       'basement i', 'eee']) {
+    assert.equal(bestMatch(noise, SHORT), null, `"${noise}" should not match anything`);
+  }
+});
+
+test('a genuinely short name still matches when read exactly', () => {
+  assert.equal(bestMatch('<3', SHORT)?.item.name, '<3');
+  assert.equal(bestMatch('  <3  ', SHORT)?.item.name, '<3');
+});
+
+test('real pickup banners resolve, including OCR mangling', () => {
+  for (const [read, expected] of [
+    ['GOAT HOOF', 'Goat Hoof'],
+    ['G0AT H00F', 'Goat Hoof'],
+    ['TOOTHPICKS', 'Toothpicks'],
+    ['T00THPICK5', 'Toothpicks'],
+  ]) {
+    assert.equal(bestMatch(read, SHORT)?.item.name, expected, `"${read}" misresolved`);
+  }
+});

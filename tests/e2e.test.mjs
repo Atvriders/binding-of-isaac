@@ -15,7 +15,7 @@ const DATA = path.join(REPO, 'data');
 
 const ready = fs.existsSync(path.join(RUFFLE, 'ruffle.js'))
            && fs.existsSync(path.join(GAME, 'isaac.swf'));
-const OCR_DIR = path.join(WEB, 'vendor', 'tesseract');
+const OCR_DIR = path.join(WEB, 'vendor', 'tesseract-5');
 const ocrReady = fs.existsSync(path.join(OCR_DIR, 'tesseract.min.js'));
 
 let srv, browser, page;
@@ -789,16 +789,16 @@ test('the OCR engine actually reads text with the vendored assets', {
     if (!window.Tesseract) {
       await new Promise((res, rej) => {
         const s = document.createElement('script');
-        s.src = '/vendor/tesseract/tesseract.min.js';
+        s.src = '/vendor/tesseract-5/tesseract.min.js';
         s.onload = res; s.onerror = () => rej(new Error('tesseract.min.js failed to load'));
         document.head.append(s);
       });
     }
     try {
       const worker = await window.Tesseract.createWorker('eng', 1, {
-        workerPath: '/vendor/tesseract/worker.min.js',
-        corePath: '/vendor/tesseract/core',
-        langPath: '/vendor/tesseract',
+        workerPath: '/vendor/tesseract-5/worker.min.js',
+        corePath: '/vendor/tesseract-5/core',
+        langPath: '/vendor/tesseract-5',
         gzip: true,
         logger: () => {},
       });
