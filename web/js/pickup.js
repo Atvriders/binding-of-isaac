@@ -9,6 +9,7 @@
 // font viable -- a garbled read still resolves to exactly one candidate, and
 // anything that does not clear the threshold reports nothing.
 import { bestMatch } from './match.js';
+import { nextAnnounceState, BANNER_CLEAR_MS } from './announce.js';
 
 // Versioned path. A CDN that cached a 404 for the unversioned path would otherwise
 // keep serving it for the life of the cache entry, long after the file existed.
@@ -37,7 +38,7 @@ const SETTLE_GAP_MS = 260;
 const POLL_MS = 400;
 const VARIANCE_MIN = Number(
   new URLSearchParams(location.search).get('aidvar') ?? 180);
-const REPEAT_SUPPRESS_MS = 8000;
+
 
 let running = false;
 let video = null, stream = null, work = null, worker = null;
@@ -204,11 +205,9 @@ async function tick(items) {
       (hit ? `match: ${hit.item.name} (${hit.score.toFixed(2)})`
            : `no match above threshold (${items.length} candidates)`);
   }
-  if (!hit) return;
-
-  const now = Date.now();
-  if (hit.item.name === lastHit.name && now - lastHit.at < REPEAT_SUPPRESS_MS) return;
-  lastHit = { name: hit.item.name, at: now };
+  const decision = nextAnnounceState(lastHit, hit?.item?.name ?? null, Date.now());
+  lastHit = decision.state;
+  if (!decision.announce || !hit) return;
   listeners.forEach(fn => fn({ item: hit.item, score: hit.score, read: bestLine }));
 }
 

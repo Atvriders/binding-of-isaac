@@ -142,3 +142,45 @@ test('real pickup banners resolve, including OCR mangling', () => {
     assert.equal(bestMatch(read, SHORT)?.item.name, expected, `"${read}" misresolved`);
   }
 });
+
+// A trinket's banner stays on screen while you hold it, so the same name is read
+// on every pass. Announcing must be edge-triggered, not merely rate-limited: a
+// timeout only delays the repeat. Reported as "Rusted Key keeps getting triggered".
+import { nextAnnounceState } from '../web/js/announce.js';
+
+test('an item on screen announces once, not repeatedly', () => {
+  let s = { name: null, at: 0 };
+  let r = nextAnnounceState(s, 'Rusted Key', 1000);
+  assert.equal(r.announce, true, 'first sighting should announce');
+  s = r.state;
+
+  for (const t of [1400, 5000, 20000, 60000]) {
+    r = nextAnnounceState(s, 'Rusted Key', t);
+    assert.equal(r.announce, false, `should stay quiet while still held (t=${t})`);
+    s = r.state;
+  }
+});
+
+test('a different item announces immediately', () => {
+  let s = nextAnnounceState({ name: null, at: 0 }, 'Rusted Key', 1000).state;
+  const r = nextAnnounceState(s, 'Goat Hoof', 1200);
+  assert.equal(r.announce, true, 'a new item should announce even while another was current');
+  assert.equal(r.state.name, 'Goat Hoof');
+});
+
+test('the same item announces again after its banner clears', () => {
+  let s = nextAnnounceState({ name: null, at: 0 }, 'Rusted Key', 1000).state;
+  // Banner gone: nothing detected for longer than the clear window.
+  s = nextAnnounceState(s, null, 6000).state;
+  assert.equal(s.name, null, 'a cleared banner should reset what was announced');
+  const r = nextAnnounceState(s, 'Rusted Key', 7000);
+  assert.equal(r.announce, true, 'picking it up again later should announce');
+});
+
+test('a brief gap does not reset the current item', () => {
+  let s = nextAnnounceState({ name: null, at: 0 }, 'Rusted Key', 1000).state;
+  s = nextAnnounceState(s, null, 1500).state;      // one missed frame
+  assert.equal(s.name, 'Rusted Key', 'a momentary miss must not clear it');
+  const r = nextAnnounceState(s, 'Rusted Key', 1600);
+  assert.equal(r.announce, false, 'and must not re-announce on the next read');
+});
