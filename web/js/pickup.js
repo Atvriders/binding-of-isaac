@@ -22,9 +22,13 @@ const TESS_BASE = '/vendor/tesseract-5';
 // Measured against real pickups: the HUD's black bar ends at ~16.7% of stage
 // height and the banner name sits just under it. Starting higher pulled the HUD's
 // counters into the crop, and OCR read those instead of the item name.
-// The longest item name is 23 characters, which projects to about 36% of stage
-// width, so 46% is ample. Widened a little anyway as cheap insurance.
-const DEFAULT_BANNER = { x: 0.05, y: 0.16, w: 0.60, h: 0.075 };
+// Full stage width. The banner is drawn two ways: left-aligned with a circular
+// icon (Goat Hoof, Safety Cap) and centred across the room (Bobby - Bomb,
+// Chocolate Milk). A left-anchored crop clips the right end of a centred name --
+// "CHOCOLATE MIL" lost its K and only matched because the fuzzy pass tolerated it.
+// Sizing off the longest name was the wrong model: alignment, not length, decides
+// where the text ends.
+const DEFAULT_BANNER = { x: 0, y: 0.16, w: 1, h: 0.075 };
 // The banner slides in from the left, so the first frame that trips the change gate
 // often holds a half-arrived name. Read a few frames and keep the best match rather
 // than trusting whichever frame happened to fire.

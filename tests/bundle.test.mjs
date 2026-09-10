@@ -252,5 +252,8 @@ test('the pickup banner region points at the top of the screen', () => {
   const [, x, y, w, h] = m.map(Number);
   assert.ok(y < 0.4, `the banner is near the top; y=${y} points at the lower screen`);
   assert.ok(y + h < 0.5, `the region must stay in the upper half (y+h=${(y + h).toFixed(2)})`);
-  assert.ok(x < 0.2 && w > 0.2, `the banner starts at the left and needs width (x=${x}, w=${w})`);
+  // The banner is sometimes left-aligned and sometimes centred across the room, so
+  // the crop has to span the full width; a left-anchored crop clips centred names.
+  assert.ok(x <= 0.02, `the crop must start at the left edge (x=${x})`);
+  assert.ok(x + w >= 0.98, `the crop must reach the right edge (x+w=${(x + w).toFixed(2)})`);
 });
