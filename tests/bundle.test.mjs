@@ -257,3 +257,32 @@ test('the pickup banner region points at the top of the screen', () => {
   assert.ok(x <= 0.02, `the crop must start at the left edge (x=${x})`);
   assert.ok(x + w >= 0.98, `the crop must reach the right edge (x+w=${(x + w).toFixed(2)})`);
 });
+
+test('revealItem does not rebuild an unfiltered grid', () => {
+  // Rebuilding all 256 tiles per detection stalled the main thread (measured at a
+  // 373ms freeze during a burst). The death screen lists everything collected, so
+  // each name read as a new detection and the page locked up.
+  const src = read('web/js/items.js');
+  const fn = /export function revealItem[\s\S]*?\n}/.exec(src);
+  assert.ok(fn, 'revealItem must exist');
+  assert.match(fn[0], /if \(els\.search\.value !== ''\)/,
+    'the grid should only be rebuilt when it is actually filtered');
+});
+
+test('the detector backs off when nothing matches', () => {
+  // A text-dense screen can hold the change gate open forever; without a backoff
+  // OCR runs flat out.
+  const src = read('web/js/pickup.js');
+  assert.match(src, /IDLE_POLL_MS/, 'an idle poll interval must exist');
+  assert.match(src, /consecutiveMisses/, 'misses must be counted');
+  const idle = Number(/IDLE_POLL_MS = (\d+)/.exec(src)?.[1]);
+  const busy = Number(/POLL_MS = (\d+)/.exec(src)?.[1]);
+  assert.ok(idle > busy, `idle polling (${idle}ms) must be slower than busy (${busy}ms)`);
+});
+
+test('Auto-ID is on by default but can be turned off', () => {
+  const src = read('web/js/boot.js');
+  assert.match(src, /let wanted = aidParam !== 'off'/, 'there must be an off switch');
+  assert.match(src, /localStorage\.getItem\(AUTOID_KEY\) !== '0'/,
+    'the stored preference must default to on');
+});

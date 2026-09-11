@@ -36,6 +36,11 @@ const DEFAULT_BANNER = { x: 0, y: 0.16, w: 1, h: 0.075 };
 const SETTLE_FRAMES = 4;
 const SETTLE_GAP_MS = 260;
 const POLL_MS = 400;
+// A screen dense with text -- the death summary lists everything collected -- can
+// keep the change gate open indefinitely. Back off after repeated misses so OCR
+// cannot run flat out, and snap back the moment something matches.
+const IDLE_POLL_MS = 1600;
+const MISSES_BEFORE_BACKOFF = 6;
 const VARIANCE_MIN = Number(
   new URLSearchParams(location.search).get('aidvar') ?? 180);
 
@@ -43,6 +48,7 @@ const VARIANCE_MIN = Number(
 let running = false;
 let video = null, stream = null, work = null, worker = null;
 let lastSig = null, lastHit = { name: null, at: 0 };
+let consecutiveMisses = 0;
 let listeners = new Set();
 let dbg = null;
 
@@ -205,6 +211,8 @@ async function tick(items) {
       (hit ? `match: ${hit.item.name} (${hit.score.toFixed(2)})`
            : `no match above threshold (${items.length} candidates)`);
   }
+  consecutiveMisses = hit ? 0 : consecutiveMisses + 1;
+
   const decision = nextAnnounceState(lastHit, hit?.item?.name ?? null, Date.now());
   lastHit = decision.state;
   if (!decision.announce || !hit) return;
@@ -224,10 +232,12 @@ export async function startPickupWatch(player, items) {
     dbg = dbg || initDebug();
     running = true;
     lastSig = null;
+    consecutiveMisses = 0;
     (async function loop() {
       while (running) {
         try { await tick(items()); } catch { /* a bad frame must not kill the loop */ }
-        await new Promise(r => setTimeout(r, POLL_MS));
+        const wait = consecutiveMisses >= MISSES_BEFORE_BACKOFF ? IDLE_POLL_MS : POLL_MS;
+        await new Promise(r => setTimeout(r, wait));
       }
     })();
     return { ok: true };

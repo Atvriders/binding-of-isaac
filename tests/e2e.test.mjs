@@ -39,7 +39,7 @@ before(async () => {
   });
   // No renderer override: the canvas backend cannot do BitmapData.draw, so the game
   // freezes in a real room. The suite must exercise the renderer users actually get.
-  await page.goto(`${srv.url}/?touch=1`, { waitUntil: 'load' });
+  await page.goto(`${srv.url}/?touch=1&aid=off`, { waitUntil: 'load' });
 });
 
 after(async () => {

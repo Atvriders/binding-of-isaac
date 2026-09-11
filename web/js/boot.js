@@ -49,6 +49,8 @@ function webglAvailable() {
 
 /** Auto-ID: watch the screen and name items as they are picked up. Off by default
  *  because it runs OCR while you play. */
+const AUTOID_KEY = 'cabinet:autoid';
+
 function initPickup(player) {
   const btn = document.getElementById('btn-watch');
   const toast = document.getElementById('pickup-toast');
@@ -73,13 +75,7 @@ function initPickup(player) {
     hideTimer = setTimeout(() => { toast.hidden = true; }, 9000);
   });
 
-  btn.addEventListener('click', async () => {
-    if (isWatching()) {
-      stopPickupWatch();
-      btn.textContent = 'Auto-ID: off';
-      btn.setAttribute('aria-pressed', 'false');
-      return;
-    }
+  const enable = async () => {
     btn.textContent = 'Auto-ID: starting…';
     const r = await startPickupWatch(player, itemList);
     if (r.ok) {
@@ -90,7 +86,34 @@ function initPickup(player) {
       btn.title = r.error || '';
       btn.disabled = true;
     }
+    return r.ok;
+  };
+
+  btn.addEventListener('click', async () => {
+    if (isWatching()) {
+      stopPickupWatch();
+      btn.textContent = 'Auto-ID: off';
+      btn.setAttribute('aria-pressed', 'false');
+      try { localStorage.setItem(AUTOID_KEY, '0'); } catch { /* fine */ }
+      return;
+    }
+    if (await enable()) {
+      try { localStorage.setItem(AUTOID_KEY, '1'); } catch { /* fine */ }
+    }
   });
+
+  // On by default. Turning it off is remembered, so the choice sticks; the work
+  // only begins once the game is up, so it never delays the first frame.
+  // ?aid=off forces it off for this load without touching the stored preference,
+  // which keeps it out of tests that are not exercising OCR.
+  const aidParam = new URLSearchParams(location.search).get('aid');
+  let wanted = aidParam !== 'off';
+  if (wanted) {
+    try { wanted = localStorage.getItem(AUTOID_KEY) !== '0'; } catch { /* default on */ }
+  }
+  if (wanted) {
+    player.addEventListener('loadedmetadata', () => { enable(); }, { once: true });
+  }
 }
 
 function fail(msg, detail) {

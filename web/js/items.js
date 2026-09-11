@@ -130,8 +130,14 @@ function render(query) {
 export function revealItem(item) {
   if (!els || !item) return;
   setCollapsed(false);
-  els.search.value = '';
-  render('');
+  // Only rebuild the grid when it is actually filtered. Rebuilding all 256 tiles on
+  // every detection stalled the main thread -- measured at a 373ms freeze during a
+  // burst -- which is what locked the page up on the death screen, where the game
+  // lists everything collected and each name reads as a new detection.
+  if (els.search.value !== '') {
+    els.search.value = '';
+    render('');
+  }
   showDetail(item);
   const tile = [...els.results.querySelectorAll('.tile')]
     .find(t => t.dataset.name === item.name);
